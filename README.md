@@ -1,16 +1,18 @@
 # G5
-*Gomuku 5 in a row*
+*deep reinforcement learning for gomoku*
 
 
 ##### scaffolding
 - [ ] state transition
+- [ ] user interface
+
+##### deep learning
 - [ ] value estimator
 - [ ] policy estimator
-- [ ] user interface
+- [x] rate scheduling
 
 ##### reinforcement learning
 - [x] reward shaping
-- [x] rate scheduling
 - [ ] importance sampling
 - [ ] experience replay
 - [ ] self reinforcement
