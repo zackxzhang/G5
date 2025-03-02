@@ -1,12 +1,13 @@
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
 from jax.typing import Int, Float, Array, ArrayLike               # type: ignore
-from typing import TypeAlias, Iterator
+from typing import TypeAlias
 
 
 Stone: TypeAlias = int
 Board: TypeAlias = Int[Array, '15 15']
-Index: TypeAlias = Int[Array, '1 2']
+Coord: TypeAlias = Int[Array, '1 2']
+Action: TypeAlias = tuple[Stone, Coord]
 
 
 onset = jnp.zeros((15, 15), dtype=jnp.int32)
@@ -28,14 +29,17 @@ def stringify(board: Board) -> str:
     return '\n'.join(''.join(map(_stringify, row)) for row in board)
 
 
-def transition(board: Board, stone: Stone, ij: Index) -> Board:
-    i, j = ij
+def affordance(board: Board, stone: Stone) -> list[Action]:
+    return [(stone, ij) for ij in jnp.argwhere(board == 0)]
+
+
+def transition(board: Board, action: Action) -> Board:
+    stone, (i, j) = action
     return board.at[i, j].set(stone)
 
 
-def affordance(board: Board, stone: Stone) -> Iterator[Board]:
-    for i, j in jnp.argwhere(board == 0):
-        yield board.at[i, j].set(stone)
+def transitions(board: Board, actions: list[Action]) -> list[Board]:
+    return [board.at[i, j].set(stone) for stone, (i, j) in actions]
 
 
 kernels = [
