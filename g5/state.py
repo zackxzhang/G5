@@ -1,3 +1,4 @@
+import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
 from jax.typing import Int, Float, Array, ArrayLike               # type: ignore
@@ -29,17 +30,15 @@ def stringify(board: Board) -> str:
     return '\n'.join(''.join(map(_stringify, row)) for row in board)
 
 
-def affordance(board: Board, stone: Stone) -> list[Action]:
-    return [(stone, ij) for ij in jnp.argwhere(board == 0)]
+def affordance(board: Board) -> list[Coord]:
+    return jnp.argwhere(board == 0)
 
 
-def transition(board: Board, action: Action) -> Board:
-    stone, (i, j) = action
-    return board.at[i, j].set(stone)
+def transition(board: Board, stone: Stone, coord: Coord) -> Board:
+    return board.at[coord].set(stone)
 
 
-def transitions(board: Board, actions: list[Action]) -> list[Board]:
-    return [board.at[i, j].set(stone) for stone, (i, j) in actions]
+transitions = jax.vmap(transition, in_axes=(None, None, 0))
 
 
 kernels = [

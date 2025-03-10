@@ -1,11 +1,12 @@
 import json
 import random
+import numpy as np                                                # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
-from .state import Stone, Board, Action, affordance, transitions
-from .value import Value, advantage
-from .policy import Policy
+from .state import Stone, Board, Coord, Action, affordance, transitions
+from .value import Value
+from .policy import Policy, critic
 from .reward import Reward
 from .optim import Schedule, ConstantSchedule
 
@@ -18,8 +19,12 @@ class Mode(Flag):
 
 class Agent(ABC):
 
-    def __init__(self, stone: Stone):
+    def __init__(self, stone: Stone, reward: type[Reward]):
         self.stone = stone
+        self.reward = reward(stone)
+
+    def eye(self, winner: Stone):
+        return self.reward(winner)
 
     @abstractmethod
     def act(self, board: Board) -> Board:
@@ -32,16 +37,16 @@ class Agent(ABC):
 
 class Amateur(Agent):
 
-    def __init__(self, stone: Stone):
-        super().__init__(stone)
+    def __init__(self, stone: Stone, reward: type[Reward]):
+        super().__init__(stone, reward)
 
     def eval(self):
         return self
 
     def act(self, board: Board) -> Action:
-        actions = affordance(board, self.stone)
-        action = random.choice(list(actions))
-        return action
+        coords = affordance(board)
+        coord = random.choice(list(coords))
+        return self.stone, coord
 
 
 class Learner(Agent):
@@ -49,10 +54,11 @@ class Learner(Agent):
     def __init__(
         self,
         stone: Stone,
+        reward: type[Reward],
         value: Value,
         epsilon: Schedule = ConstantSchedule(0.2),
     ):
-        super().__init__(stone)
+        super().__init__(stone, reward)
         self.value = value
         self.epsilon = epsilon
         self.mode: Mode
@@ -61,48 +67,48 @@ class Learner(Agent):
         self.epsilon = ConstantSchedule(0.)
         return self
 
-    def top(self, board: Board, actions: list[Action]) -> Action:
-        boards = transitions(board, actions)
-        values = self.value(boards)
-        action_values = list(zip(actions, values))
-        random.shuffle(action_values)
-        best = -inf
-        for a, v in action_values:
-            if v > best:
-                best, action = v, a
-        return action
-
-    def act(self, board: Board) -> Action:
-        actions = affordance(board, self.stone)
-        if random.uniform(0, 1) < self.epsilon():
-            self.mode = Mode.EXPLORE
-            action = random.choice(actions)
-        else:
-            self.mode = Mode.EXPLOIT
-            action = self.top(board, actions)
-        return action
-
     @abstractmethod
     def obs(
         self,
-        boards_0: list[Board],
-        actions: list[Action],
+        boards_0,
+        boards_1,
+        coords,
         rewards,
-        boards_1: list[Board]
+        boards_2,
+        merits_2,
+        edges,
     ):
         pass
 
 
 class ValueLearner(Learner):
 
+    def top(self, board: Board, coords: list[Coord]) -> Coord:
+        boards = transitions(board, self.stone, coords)
+        values = self.value(boards)
+        return coords[np.argmax(values)]
+
+    def act(self, board: Board) -> Action:
+        coords = affordance(board)
+        if random.uniform(0, 1) < self.epsilon():
+            self.mode = Mode.EXPLORE
+            coord = random.choice(coords)
+        else:
+            self.mode = Mode.EXPLOIT
+            coord = self.top(board, coords)
+        return self.stone, coord
+
     def obs(
         self,
-        boards_0: list[Board],
-        actions: list[Action],
+        boards_0,
+        boards_1,
+        coords,
         rewards,
-        boards_1: list[Board]
+        boards_2,
+        merits_2,
+        edges,
     ):
-        self.value.update(boards_0, rewards, boards_1)
+        self.value.update(boards_0, rewards, boards_2, merits_2)
 
 
 class PolicyLearner(Learner):
@@ -110,22 +116,34 @@ class PolicyLearner(Learner):
     def __init__(
         self,
         stone: Stone,
+        reward: type[Reward],
         value: Value,
         policy: Policy,
         epsilon: Schedule = ConstantSchedule(0.2),
     ):
-        super().__init__(stone, value, epsilon)
+        super().__init__(stone, reward, value, epsilon)
         self.policy = policy
+
+    def act(self, board: Board) -> Action:
+        if random.uniform(0, 1) < self.epsilon():
+            self.mode = Mode.EXPLORE
+            coord = random.choice(affordance(board))
+        else:
+            self.mode = Mode.EXPLOIT
+            logpbs = self.policy(board)
+            coord = np.unravel_index(np.argmax(logpbs), shape=logpbs.shape)
+        return self.stone, coord
 
     def obs(
         self,
-        boards_0: list[Board],
-        actions: list[Action],
+        boards_0,
+        boards_1,
+        coords,
         rewards,
-        boards_1: list[Board]
+        boards_2,
+        merits_2,
+        edges,
     ):
-        values_0 = self.value(boards_0)
-        values_1 = self.value(boards_1)
-        advantages = advantage(values_0, rewards, values_1)
-        self.policy.update(boards_0, actions, advantages)
-        self.value.update(boards_0, rewards, boards_1)
+        advs = critic(self.value, boards_0, rewards, boards_2, merits_2, edges)
+        self.policy.update(boards_1, coords, advs)
+        self.value.update(boards_0, rewards, boards_2, merits_2)
