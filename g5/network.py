@@ -17,8 +17,8 @@ def mlp_init_layer_params(m, n, key, scale=1e-2):
 
 
 def mlp_init_network_params(sizes, key):
-    keys = random.split(key, len(sizes))
+    keys = jax.random.split(key, len(sizes))
     return [
-        random_layer_params(m, n, k)
+        mlp_init_layer_params(m, n, k)
         for m, n, k in zip(sizes[:-1], sizes[1:], keys)
     ]

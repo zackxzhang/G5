@@ -1,6 +1,5 @@
-import json
-import random
-import numpy as np                                                # type: ignore
+import jax                                                        # type: ignore
+import jax.numpy as jnp                                           # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
@@ -15,6 +14,30 @@ class Mode(Flag):
 
     EXPLORE = 1
     EXPLOIT = 2
+
+
+class Choice:
+
+    def __init__(self, seed=3):
+        self.key = jax.random.key(seed)
+
+    def __call__(self, items):
+        self.key, subkey = jax.random.split(self.key)
+        return jax.random.choice(subkey, items)
+
+
+class Uniform:
+
+    def __init__(self, seed=1):
+        self.key = jax.random.key(seed)
+
+    def __call__(self):
+        self.key, subkey = jax.random.split(self.key)
+        return jax.random.uniform(subkey)
+
+
+choice = Choice()
+uniform = Uniform()
 
 
 class Agent(ABC):
@@ -45,7 +68,7 @@ class Amateur(Agent):
 
     def act(self, board: Board) -> Action:
         coords = affordance(board)
-        coord = random.choice(list(coords))
+        coord = choice(coords)
         return self.stone, coord
 
 
@@ -86,13 +109,13 @@ class ValueLearner(Learner):
     def top(self, board: Board, coords: list[Coord]) -> Coord:
         boards = transitions(board, self.stone, coords)
         values = self.value(boards)
-        return coords[np.argmax(values)]
+        return coords[jnp.argmax(values)]
 
     def act(self, board: Board) -> Action:
         coords = affordance(board)
-        if random.uniform(0, 1) < self.epsilon():
+        if uniform() < self.epsilon():
             self.mode = Mode.EXPLORE
-            coord = random.choice(coords)
+            coord = choice(coords)
         else:
             self.mode = Mode.EXPLOIT
             coord = self.top(board, coords)
@@ -125,13 +148,13 @@ class PolicyLearner(Learner):
         self.policy = policy
 
     def act(self, board: Board) -> Action:
-        if random.uniform(0, 1) < self.epsilon():
+        if uniform() < self.epsilon():
             self.mode = Mode.EXPLORE
-            coord = random.choice(affordance(board))
+            coord = choice(affordance(board))
         else:
             self.mode = Mode.EXPLOIT
-            logpbs = self.policy(board)
-            coord = np.unravel_index(np.argmax(logpbs), shape=logpbs.shape)
+            logpbs = self.policy.predicts(board)
+            coord = jnp.unravel_index(jnp.argmax(logpbs), shape=logpbs.shape)
         return self.stone, coord
 
     def obs(
@@ -144,6 +167,8 @@ class PolicyLearner(Learner):
         merits_2,
         edges,
     ):
-        advs = critic(self.value, boards_0, rewards, boards_2, merits_2, edges)
-        self.policy.update(boards_1, coords, advs)
+        advantages = critic(
+            self.value, boards_0, rewards, boards_2, merits_2, edges
+        )
+        self.policy.update(boards_1, coords, advantages)
         self.value.update(boards_0, rewards, boards_2, merits_2)

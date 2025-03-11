@@ -9,6 +9,10 @@ from .value import advantage
 class Policy(ABC):
 
     @abstractmethod
+    def predicts(self, board):
+        pass
+
+    @abstractmethod
     def predict(self, boards):
         pass
 
@@ -21,14 +25,14 @@ class Policy(ABC):
 
 
 def mlp_predict(params, board):
-    acts = board
+    acts = board.ravel()
     for w, b in params[:-1]:
         outs = jnp.dot(w, acts) + b
         acts = relu(outs)
     w, b = params[-1]
     logits = jnp.dot(w, acts) + b
     logpbs = logits - logsumexp(logits)
-    return logpbs
+    return logpbs.reshape((15, 15))
 
 
 mlp_predict_batch = jax.vmap(mlp_predict, in_axes=(None, 0))
@@ -68,9 +72,12 @@ class MLPPolicy(Policy):
 
     def __init__(self,
         layer_sizes=[225, 900, 900, 225],
-        key=jax.random.key(ord('p')),
+        seed=6,
     ):
-        self.params = mlp_init_network_params(layer_sizes, key)
+        self.params = mlp_init_network_params(layer_sizes, jax.random.key(seed))
+
+    def predicts(self, board):
+        return mlp_predict(self.params, board)
 
     def predict(self, boards):
         return mlp_predict_batch(self.params, boards)

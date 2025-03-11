@@ -1,3 +1,4 @@
+import jax.numpy as jnp                                           # type: ignore
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
 
@@ -21,14 +22,14 @@ class Rollout:
     @property
     def data(self):
         m = len(self.rewards)
-        return jnp.hstack(
+        return (
             jnp.array([onset] + self.boards[:-2]),
             jnp.array(self.boards[:-1]),
             jnp.array(self.coords),
             jnp.array(self.rewards),
             jnp.array(self.boards[1:]),
-            jnp.array([jnp.nan] * (self.m-2) + [0.] * 2),
-            jnp.array([jnp.nan] * (self.m-1) + [0.] * 1),
+            jnp.array([jnp.nan] * (m-2) + [0.] * 2),
+            jnp.array([jnp.nan] * (m-1) + [0.] * 1),
         )
 
 
@@ -92,6 +93,7 @@ class Score:
 class Simulator:
 
     def __init__(self, agents: tuple[Agent, Agent]):
+        self.agents = agents
         self.score = Score()
 
     def run(self):
@@ -101,9 +103,9 @@ class Simulator:
             action = agent.act(game.board)
             winner = game.evo(action)
             if winner:
-                score(winner)
+                self.score(winner)
                 break
-        return game.rollout
+        return game.rollout.data
 
     def __call__(self, n: int):
         return [self.run() for _ in range(n)]

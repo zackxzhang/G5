@@ -1,7 +1,9 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
-from jax.typing import Int, Float, Array, ArrayLike               # type: ignore
+from jax import Array                                             # type: ignore
+from jax.typing import ArrayLike                                  # type: ignore
+from jaxtyping import Int, Float
 from typing import TypeAlias
 
 
@@ -12,6 +14,7 @@ Action: TypeAlias = tuple[Stone, Coord]
 
 
 onset = jnp.zeros((15, 15), dtype=jnp.int32)
+proxy = jnp.zeros((2,), dtype=jnp.int32)
 
 
 def _stringify(stone):
@@ -35,7 +38,7 @@ def affordance(board: Board) -> list[Coord]:
 
 
 def transition(board: Board, stone: Stone, coord: Coord) -> Board:
-    return board.at[coord].set(stone)
+    return board.at[coord[0], coord[1]].set(stone)
 
 
 transitions = jax.vmap(transition, in_axes=(None, None, 0))

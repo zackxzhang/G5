@@ -8,6 +8,10 @@ from .network import relu, logsumexp, mlp_init_network_params
 class Value(ABC):
 
     @abstractmethod
+    def predicts(self, board):
+        pass
+
+    @abstractmethod
     def predict(self, boards):
         pass
 
@@ -20,7 +24,7 @@ class Value(ABC):
 
 
 def mlp_predict(params, board):
-    acts = board
+    acts = board.ravel()
     for w, b in params[:-1]:
         outs = jnp.dot(w, acts) + b
         acts = relu(outs)
@@ -60,9 +64,12 @@ class MLPValue(Value):
     def __init__(
         self,
         layer_sizes=[225, 900, 900, 225, 1],
-        key=jax.random.key(0),
+        seed=5,
     ):
-        self.params = mlp_init_network_params(layer_sizes, key)
+        self.params = mlp_init_network_params(layer_sizes, jax.random.key(seed))
+
+    def predicts(self, board):
+        return mlp_predict(self.params, board)
 
     def predict(self, boards):
         return mlp_predict_batch(self.params, boards)
