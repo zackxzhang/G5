@@ -1,18 +1,22 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from abc import ABC, abstractmethod
-from .state import Board, Boards
+from .state import Board, Coord
 from .network import relu, logsumexp, mlp_init_network_params
+from .value import advantage
 
 
 class Policy(ABC):
 
     @abstractmethod
-    def predict(self, board: Board):
+    def predict(self, boards):
         pass
 
+    def __call__(self, boards):
+        return self.predict(boards)
+
     @abstractmethod
-    def update(self, boards: Boards, advantages):
+    def update(self, boards, coords, advantages):
         pass
 
 
@@ -30,15 +34,30 @@ def mlp_predict(params, board):
 mlp_predict_batch = jax.vmap(mlp_predict, in_axes=(None, 0))
 
 
-def mlp_loss(params, boards, actions, advantages, gamma=1.0):
+def critic(value_fn, boards_0, rewards, boards_2, merits_2, edges):
+    values_0 = value_fn(boards_0)
+    values_2 = jnp.where(
+        merits_2.isnan(),
+        value_fn(boards_2),
+        merits_2,
+    )
+    advantages = jnp.where(
+        edges.isnan(),
+        advantage(values_0, rewards, values_2),
+        edges,
+    )
+    return advantages
+
+
+def mlp_loss(params, boards, coords, advantages):
     logpbs = mlp_predict_batch(params, boards)
-    logpas = logpbs[actions]
-    return jax.lax.stop_gradient(advantages) * logpas
+    logpas = logpbs[coords]
+    return jax.sum(advantages * logpas)
 
 
 @jax.jit
-def mlp_step(params, boards, actions, advantages, beta=1e-2):
-    grads = jax.grad(loss)(params, boards, advantages)
+def mlp_step(params, boards, coords, advantages, beta=1e-2):
+    grads = jax.grad(mlp_loss)(params, boards, coords, advantages)
     return [
         (w - beta * dw, b - beta * db)
         for (w, b), (dw, db) in zip(params, grads)
@@ -53,16 +72,18 @@ class MLPPolicy(Policy):
     ):
         self.params = mlp_init_network_params(layer_sizes, key)
 
-    def predict(self, board: Board):
-        return mlp_predict(self.params, board)
-
-    def predict_batch(self, boards: Boards):
+    def predict(self, boards):
         return mlp_predict_batch(self.params, boards)
 
-    def update(self, boards: Boards, advantages):
-        self.params = mlp_step(self.params, boards, advantages)
+    def update(self, boards, coords, advantages):
+        self.params = mlp_step(self.params, boards, coords, advantages)
 
 
 class UNetPolicy(Policy):
+
+    ...
+
+
+class G5Policy(Policy):
 
     ...
