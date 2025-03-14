@@ -41,12 +41,12 @@ mlp_predict_batch = jax.vmap(mlp_predict, in_axes=(None, 0))
 def critic(value_fn, boards_0, rewards, boards_2, merits_2, edges):
     values_0 = value_fn(boards_0)
     values_2 = jnp.where(
-        merits_2.isnan(),
+        jnp.isnan(merits_2),
         value_fn(boards_2),
         merits_2,
     )
     advantages = jnp.where(
-        edges.isnan(),
+        jnp.isnan(edges),
         advantage(values_0, rewards, values_2),
         edges,
     )
@@ -54,9 +54,10 @@ def critic(value_fn, boards_0, rewards, boards_2, merits_2, edges):
 
 
 def mlp_loss(params, boards, coords, advantages):
+    n = len(coords)
     logpbs = mlp_predict_batch(params, boards)
-    logpas = logpbs[coords]
-    return jax.sum(advantages * logpas)
+    logpas = logpbs[jnp.arange(n), coords[:, 0], coords[:, 1]][:, None]
+    return jnp.sum(advantages * logpas)
 
 
 @jax.jit

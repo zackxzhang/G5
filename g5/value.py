@@ -42,12 +42,12 @@ def advantage(values_0, rewards, values_2, gamma=1.0):
 def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
     values_0 = mlp_predict_batch(params, boards_0)
     values_2 = jnp.where(
-        merits_2.isnan(),
+        jnp.isnan(merits_2),
         mlp_predict_batch(params, boards_2),
         merits_2,
     )
     advantages = advantage(values_0, rewards, jax.lax.stop_gradient(values_2))
-    return jax.sum(advantages**2)
+    return jnp.sum(advantages**2)
 
 
 @jax.jit
@@ -80,7 +80,7 @@ class MLPValue(Value):
             boards_0,
             rewards,
             boards_2,
-            values_2
+            merits_2,
         )
 
 

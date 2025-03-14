@@ -26,10 +26,10 @@ class Rollout:
             jnp.array([onset] + self.boards[:-2]),
             jnp.array(self.boards[:-1]),
             jnp.array(self.coords),
-            jnp.array(self.rewards),
+            jnp.array(self.rewards)[:, None],
             jnp.array(self.boards[1:]),
-            jnp.array([jnp.nan] * (m-2) + [0.] * 2),
-            jnp.array([jnp.nan] * (m-1) + [0.] * 1),
+            jnp.array([jnp.nan] * (m-2) + [0.] * 2)[:, None],
+            jnp.array([jnp.nan] * (m-1) + [0.] * 1)[:, None],
         )
 
 
