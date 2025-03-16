@@ -3,7 +3,7 @@ import jax.numpy as jnp                                           # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
-from .state import Stone, Board, Coord, Action, affordance, transitions
+from .state import Stone, Board, Coord, Action, unravel, affordance, transitions
 from .value import Value
 from .policy import Policy, critic
 from .reward import Reward
@@ -154,7 +154,8 @@ class PolicyLearner(Learner):
         else:
             self.mode = Mode.EXPLOIT
             logpbs = self.policy.predicts(board)
-            coord = jnp.unravel_index(jnp.argmax(logpbs), shape=logpbs.shape)
+            logpbs = jnp.where(board == 0, logpbs, jnp.nan)
+            coord = unravel(jnp.nanargmax(logpbs))
         return self.stone, coord
 
     def obs(

@@ -41,6 +41,11 @@ def transition(board: Board, stone: Stone, coord: Coord) -> Board:
     return board.at[coord[0], coord[1]].set(stone)
 
 
+def unravel(index: int) -> Coord:
+    i, j = divmod(index, 15)
+    return jnp.array([i, j])
+
+
 transitions = jax.vmap(transition, in_axes=(None, None, 0))
 
 
