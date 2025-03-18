@@ -3,7 +3,7 @@
 
 
 ##### scaffolding
-- [ ] state transition
+- [x] state transition
 - [ ] user interface
 
 ##### deep learning
@@ -25,3 +25,7 @@
 |       player     || win ratio                    |||
 |:-------:|:-------:|---------:|---------:|---------:|
 |   `X`   |   `O`   |    `X`   |    `-`   |    `O`   |
+| random  | random  |        % |        % |        % |
+|   agent | random  |        % |        % |        % |
+| random  | agent   |        % |        % |        % |
+|   agent | agent   |        % |        % |        % |
