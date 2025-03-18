@@ -1,6 +1,21 @@
+import numpy as np                                                # type: ignore
+import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
+
+
+class Permutation:
+
+    def __init__(self, seed=2):
+        self.key = jax.random.key(seed)
+
+    def __call__(self, items):
+        self.key, subkey = jax.random.split(self.key)
+        return jax.random.permutation(subkey, items)
+
+
+permute = Permutation()
 
 
 class Rollout:
@@ -23,14 +38,60 @@ class Rollout:
     def data(self):
         m = len(self.rewards)
         return (
-            jnp.array([onset] + self.boards[:-2]),
-            jnp.array(self.boards[:-1]),
-            jnp.array(self.coords),
-            jnp.array(self.rewards)[:, None],
-            jnp.array(self.boards[1:]),
-            jnp.array([jnp.nan] * (m-2) + [0.] * 2)[:, None],
-            jnp.array([jnp.nan] * (m-1) + [0.] * 1)[:, None],
+            jnp.stack([onset] + self.boards[:-2]),
+            jnp.stack(self.boards[:-1]),
+            jnp.stack(self.coords),
+            jnp.stack(self.rewards)[:, None],
+            jnp.stack(self.boards[1:]),
+            jnp.stack([jnp.nan] * (m-2) + [0.] * 2)[:, None],
+            jnp.stack([jnp.nan] * (m-1) + [0.] * 1)[:, None],
         )
+
+
+header = [
+    'boards_0',
+    'boards_1',
+    'coords',
+    'rewards',
+    'boards_2',
+    'merits_2',
+    'edges',
+]
+
+
+class Batcher:
+
+    def __init__(self):
+        self.p1 = {head: list() for head in header}
+        self.p2 = {head: list() for head in header}
+
+    def append(self, *data):
+        for d1, d2, arr in zip(self.p1.values(), self.p2.values(), data):
+            d1.append(arr[0::2])
+            d2.append(arr[1::2])
+
+    def batch(self):
+        p1  = [jnp.vstack(data) for data in self.p1.values()]
+        idx = permute(jnp.arange(len(p1[0])))
+        p1  = {key: arr[idx] for key, arr in zip(self.p1.keys(), p1)}
+        p2  = [jnp.vstack(data) for data in self.p2.values()]
+        idx = permute(jnp.arange(len(p2[0])))
+        p2  = {key: arr[idx] for key, arr in zip(self.p2.keys(), p2)}
+        return p1, p2
+
+    def save(self, f1='p1.npz', f2='p2.npz'):
+        p1, p2 = self.batch()
+        np.savez(f1, **{k: np.array(v) for k, v in self.p1.items()})
+        np.savez(f2, **{k: np.array(v) for k, v in self.p2.items()})
+
+
+class Loader:
+
+    def load(self, f1, f2):
+        p1 = np.load(f1)
+        p2 = np.load(f2)
+        self.p1 = [p1[head] for head in header]
+        self.p2 = [p2[head] for head in header]
 
 
 class Game:
@@ -108,4 +169,7 @@ class Simulator:
         return game.rollout.data
 
     def __call__(self, n: int):
-        return [self.run() for _ in range(n)]
+        batcher = Batcher()
+        for _ in range(n):
+            batcher.append(*self.run())
+        return batcher
