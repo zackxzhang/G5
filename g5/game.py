@@ -1,3 +1,4 @@
+import multiprocessing as mp
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
@@ -7,15 +8,12 @@ from .agent import Agent
 
 class Permutation:
 
-    def __init__(self, seed=2):
-        self.key = jax.random.key(seed)
+    def __init__(self, key):
+        self.key = key
 
     def __call__(self, items):
         self.key, subkey = jax.random.split(self.key)
         return jax.random.permutation(subkey, items)
-
-
-permute = Permutation()
 
 
 class Rollout:
@@ -61,9 +59,13 @@ header = [
 
 class Batcher:
 
-    def __init__(self):
-        self.p1 = {head: list() for head in header}
-        self.p2 = {head: list() for head in header}
+    def __init__(self, seed: int = 7):
+        self.seed(jax.random.key(seed))
+        self.p1: dict = {head: list() for head in header}
+        self.p2: dict = {head: list() for head in header}
+
+    def seed(self, key):
+        self.permute = Permutation(key)
 
     def append(self, *data):
         for d1, d2, arr in zip(self.p1.values(), self.p2.values(), data):
@@ -72,17 +74,17 @@ class Batcher:
 
     def batch(self):
         p1  = [jnp.vstack(data) for data in self.p1.values()]
-        idx = permute(jnp.arange(len(p1[0])))
+        idx = self.permute(jnp.arange(len(p1[0])))
         p1  = {key: arr[idx] for key, arr in zip(self.p1.keys(), p1)}
         p2  = [jnp.vstack(data) for data in self.p2.values()]
-        idx = permute(jnp.arange(len(p2[0])))
+        idx = self.permute(jnp.arange(len(p2[0])))
         p2  = {key: arr[idx] for key, arr in zip(self.p2.keys(), p2)}
         return p1, p2
 
     def save(self, f1='p1.npz', f2='p2.npz'):
         p1, p2 = self.batch()
-        np.savez(f1, **{k: np.array(v) for k, v in self.p1.items()})
-        np.savez(f2, **{k: np.array(v) for k, v in self.p2.items()})
+        np.savez(f1, **{k: np.array(v) for k, v in p1.items()})
+        np.savez(f2, **{k: np.array(v) for k, v in p2.items()})
 
 
 class Loader:
@@ -90,8 +92,8 @@ class Loader:
     def load(self, f1, f2):
         p1 = np.load(f1)
         p2 = np.load(f2)
-        self.p1 = [p1[head] for head in header]
-        self.p2 = [p2[head] for head in header]
+        self.p1 = {head: p1[head] for head in header}
+        self.p2 = {head: p2[head] for head in header}
 
 
 class Game:
@@ -157,7 +159,10 @@ class Simulator:
         self.agents = agents
         self.score = Score()
 
-    def run(self):
+    def run(self, seed):
+        key1, key2 = jax.random.split(jax.random.key(seed))
+        self.agents[0].seed(key1)
+        self.agents[1].seed(key2)
         game = Game(self.agents)
         while True:
             agent  = game.agent
@@ -170,6 +175,8 @@ class Simulator:
 
     def __call__(self, n: int):
         batcher = Batcher()
-        for _ in range(n):
-            batcher.append(*self.run())
+        with mp.Pool(8) as pool:
+            data = pool.map(self.run, range(n))
+        for d in data:
+            batcher.append(*d)
         return batcher
