@@ -2,6 +2,8 @@ import multiprocessing as mp
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
+from functools import cached_property
+from itertools import repeat
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
 
@@ -18,12 +20,16 @@ class Permutation:
 
 class Rollout:
 
+    """record and columnify"""
+
     def __init__(self):
+        self.frozen = False
         self.coords = list()
         self.rewards = list()
         self.boards = [onset]
 
     def append(self, coord: Coord, reward: int, board: Board):
+        assert not self.frozen
         self.coords.append(coord)
         self.rewards.append(reward)
         self.boards.append(board)
@@ -32,21 +38,22 @@ class Rollout:
     def last(self):
         return self.boards[-1]
 
-    @property
+    @cached_property
     def data(self):
-        m = len(self.rewards)
+        self.frozen = True
+        n = len(self.rewards)
         return (
             jnp.stack([onset] + self.boards[:-2]),
             jnp.stack(self.boards[:-1]),
             jnp.stack(self.coords),
             jnp.stack(self.rewards)[:, None],
             jnp.stack(self.boards[1:]),
-            jnp.stack([jnp.nan] * (m-2) + [0.] * 2)[:, None],
-            jnp.stack([jnp.nan] * (m-1) + [0.] * 1)[:, None],
+            jnp.stack([jnp.nan] * (n-2) + [0.] * 2)[:, None],
+            jnp.stack([jnp.nan] * (n-1) + [0.] * 1)[:, None],
         )
 
 
-header = [
+headers = [
     'boards_0',
     'boards_1',
     'coords',
@@ -57,43 +64,64 @@ header = [
 ]
 
 
-class Batcher:
+class Collator:
 
-    def __init__(self, seed: int = 7):
-        self.seed(jax.random.key(seed))
-        self.p1: dict = {head: list() for head in header}
-        self.p2: dict = {head: list() for head in header}
+    """concatenate and bisect"""
+
+    def __init__(self, stage: int, batch: int):
+        self.frozen = False
+        self.prefix = f'stage-{stage}_batch-{batch}_'
+        self.p1: dict = {k: list() for k in headers}
+        self.p2: dict = {k: list() for k in headers}
 
     def seed(self, key):
         self.permute = Permutation(key)
 
     def append(self, *data):
+        assert not self.frozen
         for d1, d2, arr in zip(self.p1.values(), self.p2.values(), data):
             d1.append(arr[0::2])
             d2.append(arr[1::2])
 
-    def batch(self):
-        p1  = [jnp.vstack(data) for data in self.p1.values()]
-        idx = self.permute(jnp.arange(len(p1[0])))
-        p1  = {key: arr[idx] for key, arr in zip(self.p1.keys(), p1)}
-        p2  = [jnp.vstack(data) for data in self.p2.values()]
-        idx = self.permute(jnp.arange(len(p2[0])))
-        p2  = {key: arr[idx] for key, arr in zip(self.p2.keys(), p2)}
+    @cached_property
+    def data(self):
+        self.frozen = True
+        v1  = [jnp.vstack(arrays) for arrays in self.p1.values()]
+        idx = self.permute(jnp.arange(len(v1[0])))
+        p1  = {key: arr[idx] for key, arr in zip(self.p1.keys(), v1)}
+        v2  = [jnp.vstack(arrays) for arrays in self.p2.values()]
+        idx = self.permute(jnp.arange(len(v2[0])))
+        p2  = {key: arr[idx] for key, arr in zip(self.p2.keys(), v2)}
         return p1, p2
 
     def save(self, f1='p1.npz', f2='p2.npz'):
-        p1, p2 = self.batch()
-        np.savez(f1, **{k: np.array(v) for k, v in p1.items()})
-        np.savez(f2, **{k: np.array(v) for k, v in p2.items()})
+        p1, p2 = self.data
+        np.savez(self.prefix + f1, **{k: np.array(v) for k, v in p1.items()})
+        np.savez(self.prefix + f2, **{k: np.array(v) for k, v in p2.items()})
 
 
 class Loader:
 
-    def load(self, f1, f2):
+    """shuffle and batch"""
+
+    def __init__(self, batch_size: int = 32):
+        self.batch_size = batch_size
+
+    def load(self, f1='p1.npz', f2='p2.npz'):
         p1 = np.load(f1)
         p2 = np.load(f2)
-        self.p1 = {head: p1[head] for head in header}
-        self.p2 = {head: p2[head] for head in header}
+        self.p1 = {k: p1[k] for k in headers}
+        self.p2 = {k: p2[k] for k in headers}
+
+    def pack(self, data):
+        self.p1, self.p2 = data
+
+    @property
+    def data(self):
+        return self.p1, self.p2
+
+    def __iter__(self):
+        pass
 
 
 class Game:
@@ -159,24 +187,31 @@ class Simulator:
         self.agents = agents
         self.score = Score()
 
-    def run(self, seed):
-        key1, key2 = jax.random.split(jax.random.key(seed))
-        self.agents[0].seed(key1)
-        self.agents[1].seed(key2)
-        game = Game(self.agents)
-        while True:
-            agent  = game.agent
-            action = agent.act(game.board)
-            winner = game.evo(action)
-            if winner:
-                self.score(winner)
-                break
-        return game.rollout.data
+    def run(self, stage, division, n_games):
+        collator = Collator(stage, batch)
+        key = jax.random.key((stage * division + 7) * 11 + 5)
+        key, key0, key1 = jax.random.split(key, num=3)
+        collator.seed(key)
+        self.agents[0].seed(key0)
+        self.agents[1].seed(key1)
+        for _ in range(n_games):
+            game = Game(self.agents)
+            while True:
+                agent  = game.agent
+                action = agent.act(game.board)
+                winner = game.evo(action)
+                if winner:
+                    self.score(winner)
+                    break
+            collator.append(*game.rollout.data)
+        return collator.data
 
-    def __call__(self, n: int):
-        batcher = Batcher()
-        with mp.Pool(8) as pool:
-            data = pool.map(self.run, range(n))
-        for d in data:
-            batcher.append(*d)
-        return batcher
+    def __call__(self, stage: int, n_games: int, n_procs=8):
+        n = n_games // n_procs
+        m = n_games - (n_procs - 1) * n
+        with mp.Pool(n_procs) as pool:
+            data = pool.starmap(
+                self.run,
+                zip(repeat(stage), range(n_procs), [n] * (n_procs-1) + [m]),
+            )
+        return data
