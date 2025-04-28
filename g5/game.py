@@ -2,7 +2,8 @@ import multiprocessing as mp
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
-from functools import cached_property
+from collections import defaultdict
+from collections.abc import Iterable
 from itertools import repeat
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
@@ -20,16 +21,12 @@ class Permutation:
 
 class Rollout:
 
-    """record and columnify"""
-
     def __init__(self):
-        self.frozen = False
         self.coords = list()
         self.rewards = list()
         self.boards = [onset]
 
     def append(self, coord: Coord, reward: int, board: Board):
-        assert not self.frozen
         self.coords.append(coord)
         self.rewards.append(reward)
         self.boards.append(board)
@@ -38,22 +35,11 @@ class Rollout:
     def last(self):
         return self.boards[-1]
 
-    @cached_property
-    def data(self):
-        self.frozen = True
-        n = len(self.rewards)
-        return (
-            jnp.stack([onset] + self.boards[:-2]),
-            jnp.stack(self.boards[:-1]),
-            jnp.stack(self.coords),
-            jnp.stack(self.rewards)[:, None],
-            jnp.stack(self.boards[1:]),
-            jnp.stack([jnp.nan] * (n-2) + [0.] * 2)[:, None],
-            jnp.stack([jnp.nan] * (n-1) + [0.] * 1)[:, None],
-        )
+    def __len__(self):
+        return len(self.rewards)
 
 
-headers = [
+columns = [
     'boards_0',
     'boards_1',
     'coords',
@@ -64,64 +50,60 @@ headers = [
 ]
 
 
-class Collator:
+class Replay:
 
-    """concatenate and bisect"""
+    def __init__(self, data: dict | None = None):
+        self.data = data if data else {col: np.array() for col in columns}
 
-    def __init__(self, stage: int, batch: int):
-        self.frozen = False
-        self.prefix = f'stage-{stage}_batch-{batch}_'
-        self.p1: dict = {k: list() for k in headers}
-        self.p2: dict = {k: list() for k in headers}
+    def __len__(self):
+        return len(self.data['rewards'])
 
-    def seed(self, key):
-        self.permute = Permutation(key)
+    def __getitem__(self, key):
+        return self.data[key]
 
-    def append(self, *data):
-        assert not self.frozen
-        for d1, d2, arr in zip(self.p1.values(), self.p2.values(), data):
-            d1.append(arr[0::2])
-            d2.append(arr[1::2])
+    def save(self, file: str = ''):
+        np.savez(f'{file}.npz', **self.data)
 
-    @cached_property
-    def data(self):
-        self.frozen = True
-        v1  = [jnp.vstack(arrays) for arrays in self.p1.values()]
-        idx = self.permute(jnp.arange(len(v1[0])))
-        p1  = {key: arr[idx] for key, arr in zip(self.p1.keys(), v1)}
-        v2  = [jnp.vstack(arrays) for arrays in self.p2.values()]
-        idx = self.permute(jnp.arange(len(v2[0])))
-        p2  = {key: arr[idx] for key, arr in zip(self.p2.keys(), v2)}
-        return p1, p2
-
-    def save(self, f1='p1.npz', f2='p2.npz'):
-        p1, p2 = self.data
-        np.savez(self.prefix + f1, **{k: np.array(v) for k, v in p1.items()})
-        np.savez(self.prefix + f2, **{k: np.array(v) for k, v in p2.items()})
+    @classmethod
+    def load(cls, file: str = ''):
+        memo = np.load(f'{file}.npz')
+        data = {col: memo[col] for col in columns}
+        return cls(data)
 
 
-class Loader:
+def split(d: dict):
+    d1, d2 = dict(), dict()
+    for k, v in d.items():
+        d1[k] = v[0::2]
+        d2[k] = v[1::2]
+    return d1, d2
 
-    """shuffle and batch"""
 
-    def __init__(self, batch_size: int = 32):
-        self.batch_size = batch_size
+def memoize(rollout: Rollout) -> tuple[Replay, Replay]:
+    n = len(rollout)
+    # 1. columnify
+    p = {
+        'boards_0': jnp.stack([onset] + rollout.boards[:-2]),
+        'boards_1': jnp.stack(rollout.boards[:-1]),
+        'coords': jnp.stack(rollout.coords),
+        'rewards': jnp.stack(rollout.rewards)[:, None],
+        'boards_2': jnp.stack(rollout.boards[1:]),
+        'merits_2': jnp.stack([jnp.nan] * (n-2) + [0.] * 2)[:, None],
+        'edges': jnp.stack([jnp.nan] * (n-1) + [0.] * 1)[:, None],
+    }
+    # 2. split
+    p1, p2 = split(p)
+    return Replay(p1), Replay(p2)
 
-    def load(self, f1='p1.npz', f2='p2.npz'):
-        p1 = np.load(f1)
-        p2 = np.load(f2)
-        self.p1 = {k: p1[k] for k in headers}
-        self.p2 = {k: p2[k] for k in headers}
 
-    def pack(self, data):
-        self.p1, self.p2 = data
-
-    @property
-    def data(self):
-        return self.p1, self.p2
-
-    def __iter__(self):
-        pass
+def collate(replays: Iterable[Replay]) -> Replay:
+    memo = defaultdict(list)
+    for col in columns:
+        for replay in replays:
+            memo[col].append(replay[col])
+    # 3. concatentate
+    data = {k: jnp.vstack(v) for k, v in memo.items()}
+    return Replay(data)
 
 
 class Game:
@@ -131,6 +113,9 @@ class Game:
         self.round  = 0
         self.winner = 0
         self.rollout = Rollout()
+
+    def __len__(self):
+        return len(self.rollout)
 
     @property
     def agent(self) -> Agent:
@@ -187,13 +172,17 @@ class Simulator:
         self.agents = agents
         self.score = Score()
 
-    def run(self, stage, division, n_games):
-        collator = Collator(stage, batch)
+    def run(
+        self,
+        stage: int,
+        division: int,
+        n_games: int,
+    ) -> tuple[Replay, Replay]:
         key = jax.random.key((stage * division + 7) * 11 + 5)
         key, key0, key1 = jax.random.split(key, num=3)
-        collator.seed(key)
         self.agents[0].seed(key0)
         self.agents[1].seed(key1)
+        replays_p1, replays_p2 = list(), list()
         for _ in range(n_games):
             game = Game(self.agents)
             while True:
@@ -202,16 +191,52 @@ class Simulator:
                 winner = game.evo(action)
                 if winner:
                     self.score(winner)
+                    print(len(game))
                     break
-            collator.append(*game.rollout.data)
-        return collator.data
+            replay_p1, replay_p2 = memoize(game.rollout)
+            replays_p1.append(replay_p1)
+            replays_p2.append(replay_p2)
+        return collate(replays_p1), collate(replays_p2)
 
-    def __call__(self, stage: int, n_games: int, n_procs=8):
+    def __call__(
+        self,
+        stage: int,
+        n_games: int,
+        n_procs=8,
+        to_disk: bool = False,
+    ) -> tuple[Replay, Replay]:
         n = n_games // n_procs
         m = n_games - (n_procs - 1) * n
         with mp.Pool(n_procs) as pool:
-            data = pool.starmap(
+            replays: list[tuple[Replay, Replay]] = pool.starmap(
                 self.run,
                 zip(repeat(stage), range(n_procs), [n] * (n_procs-1) + [m]),
             )
-        return data
+        replays_p1, replays_p2 = list(zip(*replays))
+        replay_p1 = collate(replays_p1)
+        replay_p2 = collate(replays_p2)
+        if to_disk:
+            replay_p1.save(f'stage-{stage}_p1')
+            replay_p2.save(f'stage-{stage}_p2')
+        return replay_p1, replay_p2
+
+
+class Loader:
+
+    def __init__(self, replay: Replay, batch_size: int = 32, seed: int = 3):
+        self.replay = replay
+        self.batch_size = batch_size
+        self.seed(jax.random.key(seed))
+
+    def seed(self, key):
+        self.permute = Permutation(key)
+
+    def __iter__(self):
+        # 4. shuffle
+        idx  = self.permute(jnp.arange(len(self.replay)))
+        data = {k: v[idx] for k, v in self.replay.data.items()}
+        i, b, n = 0, self.batch_size, len(self.replay)
+        # 5. batch
+        while i < n:
+            yield {col: data[col][i:i+b] for col in columns}
+            i += b
