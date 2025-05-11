@@ -5,6 +5,7 @@ import jax.numpy as jnp                                           # type: ignore
 from collections import defaultdict
 from collections.abc import Iterable
 from itertools import repeat
+from pathlib import Path
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
 
@@ -61,12 +62,12 @@ class Replay:
     def __getitem__(self, key):
         return self.data[key]
 
-    def save(self, file: str = ''):
-        np.savez(f'{file}.npz', **self.data)
+    def save(self, path: Path):
+        np.savez(path, **self.data)
 
     @classmethod
-    def load(cls, file: str = ''):
-        memo = np.load(f'{file}.npz')
+    def load(cls, path: Path):
+        memo = np.load(path)
         data = {col: memo[col] for col in columns}
         return cls(data)
 
@@ -150,27 +151,23 @@ class Score:
         return sum(self.wins)
 
     def __call__(self, winner: Stone):
-        if winner == 1:
-            self.wins[1] += 1
-        elif winner == -1:
-            self.wins[2] += 1
-        else:
-            self.wins[0] += 1
+        self.wins[winner] += 1
 
     def __str__(self):
         return (
-            f'X {self.wins[1]/self.n}\n'
-            f'- {self.wins[0]/self.n}\n'
-            f'O {self.wins[2]/self.n}\n'
+            f'X {self.wins[1]/self.n:.2%}\n'
+            f'- {self.wins[0]/self.n:.2%}\n'
+            f'O {self.wins[2]/self.n:.2%}\n'
             '--------'
         )
 
 
 class Simulator:
 
-    def __init__(self, agents: tuple[Agent, Agent]):
+    def __init__(self, agents: tuple[Agent, Agent], folder: Path = Path('.')):
         self.agents = agents
-        self.score = Score()
+        self.score  = Score()
+        self.folder = folder
 
     def run(
         self,
@@ -178,7 +175,7 @@ class Simulator:
         division: int,
         n_games: int,
     ) -> tuple[Replay, Replay]:
-        key = jax.random.key((stage * division + 7) * 11 + 5)
+        key = jax.random.key(((stage + 3) * division + 7) * 11 + 5)
         key, key0, key1 = jax.random.split(key, num=3)
         self.agents[0].seed(key0)
         self.agents[1].seed(key1)
@@ -191,11 +188,12 @@ class Simulator:
                 winner = game.evo(action)
                 if winner:
                     self.score(winner)
-                    print(len(game))
+                    print(f"The game took {len(game)} steps.")
                     break
             replay_p1, replay_p2 = memoize(game.rollout)
             replays_p1.append(replay_p1)
             replays_p2.append(replay_p2)
+        print(self.score)
         return collate(replays_p1), collate(replays_p2)
 
     def __call__(
@@ -203,7 +201,7 @@ class Simulator:
         stage: int,
         n_games: int,
         n_procs=8,
-        to_disk: bool = False,
+        save: bool = False,
     ) -> tuple[Replay, Replay]:
         n = n_games // n_procs
         m = n_games - (n_procs - 1) * n
@@ -215,9 +213,9 @@ class Simulator:
         replays_p1, replays_p2 = list(zip(*replays))
         replay_p1 = collate(replays_p1)
         replay_p2 = collate(replays_p2)
-        if to_disk:
-            replay_p1.save(f'stage-{stage}_p1')
-            replay_p2.save(f'stage-{stage}_p2')
+        if save:
+            replay_p1.save(self.folder / f'stage-{stage}_p1.npz')
+            replay_p2.save(self.folder / f'stage-{stage}_p2.npz')
         return replay_p1, replay_p2
 
 

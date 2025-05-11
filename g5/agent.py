@@ -46,11 +46,15 @@ class Agent(ABC):
         return self.reward(winner)
 
     @abstractmethod
-    def act(self, board: Board) -> Board:
+    def eval(self):
         pass
 
     @abstractmethod
-    def eval(self):
+    def seed(self, key):
+        pass
+
+    @abstractmethod
+    def act(self, board: Board) -> Board:
         pass
 
 
