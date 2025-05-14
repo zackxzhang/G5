@@ -1,5 +1,10 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
+import numpy as np                                                # type: ignore
+from flax.serialization import (                                  # type: ignore
+    msgpack_serialize as encode_pytree,
+    msgpack_restore   as decode_pytree,
+)
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
@@ -107,6 +112,15 @@ class Learner(Agent):
         self.choice = Choice(key2)
 
     @abstractmethod
+    def save(self, file):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def load(cls, file):
+        pass
+
+    @abstractmethod
     def obs(
         self,
         boards_0,
@@ -121,6 +135,27 @@ class Learner(Agent):
 
 
 class ValueLearner(Learner):
+
+    def save(self, file):
+        data = {
+            'stone':  self.stone,
+            'reward': self.reward.encode(),
+            'value':  self.value.encode(),
+        }
+        msgpack = encode_pytree(data)
+        print(data)
+        with open(file, 'wb') as f:
+            f.write(msgpack)
+
+    @classmethod
+    def load(cls, file):
+        with open(file, 'rb') as f:
+            msgpack = f.read()
+        data = decode_pytree(msgpack)
+        stone  = data['stone']
+        reward = Reward.decode(data['reward'])
+        value  = Value.decode(data['value'])
+        return cls(stone, reward, value)
 
     def top(self, board: Board, coords: list[Coord]) -> Coord:
         boards = transitions(board, self.stone, coords)
@@ -163,6 +198,28 @@ class PolicyLearner(Learner):
     ):
         super().__init__(stone, reward, value, epsilon)
         self.policy = policy
+
+    def save(self, file):
+        data = {
+            'stone':  self.stone,
+            'reward': self.reward.encode(),
+            'value':  self.value.encode(),
+            'policy': self.policy.encode(),
+        }
+        msgpack = encode_pytree(data)
+        with open(file, 'wb') as f:
+            f.write(msgpack)
+
+    @classmethod
+    def load(cls, file):
+        with open(file, 'rb') as f:
+            msgpack = f.read()
+        data = decode_pytree(msgpack)
+        stone  = data['stone']
+        reward = Reward.decode(data['reward'])
+        value  = Value.decode(data['value'])
+        policy = Policy.decode(data['policy'])
+        return cls(stone, reward, value, policy)
 
     def act(self, board: Board) -> Action:
         if self.uniform() < self.epsilon():

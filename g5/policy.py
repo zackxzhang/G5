@@ -2,11 +2,13 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from abc import ABC, abstractmethod
 from .state import Board, Coord
-from .network import relu, logsumexp, mlp_init_network_params
+from .network import PyTree, relu, logsumexp, mlp_init_network_params
 from .value import advantage
 
 
 class Policy(ABC):
+
+    params: PyTree
 
     @abstractmethod
     def predicts(self, board):
@@ -22,6 +24,24 @@ class Policy(ABC):
     @abstractmethod
     def update(self, boards, coords, advantages):
         pass
+
+    def encode(self):
+        return {
+            'class': self.__class__.__name__,
+            'params': self.params,
+        }
+
+    @classmethod
+    def decode(self, data):
+        match data['class']:
+            case 'MLPPolicy':
+                return MLPPolicy(data['params'])
+            # case 'UNetPolicy':
+            #     return UNetPolicy(data['params'])
+            # case 'G5Policy':
+            #     return G5Policy(data['params'])
+            case _:
+                raise ValueError(f"no policy class named {data['class']}")
 
 
 def mlp_predict(params, board):
@@ -71,11 +91,14 @@ def mlp_step(params, boards, coords, advantages, beta=1e-2):
 
 class MLPPolicy(Policy):
 
-    def __init__(self,
-        layer_sizes=[225, 900, 900, 225],
-        seed=6,
-    ):
-        self.params = mlp_init_network_params(layer_sizes, jax.random.key(seed))
+    def __init__(self, params: PyTree | None = None, seed=6):
+        self.params = (
+            params if params else
+            mlp_init_network_params(
+                sizes=[225, 900, 900, 225],
+                key=jax.random.key(seed),
+            )
+        )
 
     def predicts(self, board):
         return mlp_predict(self.params, board)

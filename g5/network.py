@@ -2,6 +2,10 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
 from jax.scipy.special import logsumexp                           # type: ignore
+from typing import Any, TypeAlias
+
+
+PyTree: TypeAlias = Any
 
 
 def relu(x):
@@ -10,10 +14,10 @@ def relu(x):
 
 def mlp_init_layer_params(m, n, key, scale=1e-2):
     w_key, b_key = jax.random.split(key)
-    return (
+    return [
         scale * jax.random.normal(w_key, (n, m)),
         scale * jax.random.normal(b_key, (n,))
-    )
+    ]
 
 
 def mlp_init_network_params(sizes, key):

@@ -4,8 +4,6 @@ from .state import Stone
 
 class Reward(ABC):
 
-    name: str
-
     def __init__(self, stone: Stone):
         self.stone = stone
 
@@ -13,10 +11,25 @@ class Reward(ABC):
     def __call__(self, winner: Stone):
         pass
 
+    def encode(self):
+        return {
+            'class': self.__class__.__name__,
+        }
+
+    @classmethod
+    def decode(self, data):
+        match data['class']:
+            case 'Victory':
+                return Victory
+            case 'Rush':
+                return Rush
+            case 'Survival':
+                return Survival
+            case _:
+                raise ValueError(f"no policy class named {data['class']}")
+
 
 class Victory(Reward):
-
-    name = 'victory'
 
     def __call__(self, winner: Stone) -> int:
         if winner == self.stone:
@@ -31,8 +44,6 @@ class Victory(Reward):
 
 class Rush(Reward):
 
-    name = 'rush'
-
     def __call__(self, winner: Stone) -> int:
         if winner == self.stone:
             return +10
@@ -45,8 +56,6 @@ class Rush(Reward):
 
 
 class Survival(Reward):
-
-    name = 'survival'
 
     def __call__(self, winner: Stone) -> int:
         if winner == self.stone:
