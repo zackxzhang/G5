@@ -1,14 +1,16 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
+from jax import Array                                             # type: ignore
 import numpy as np                                                # type: ignore
 from flax.serialization import (                                  # type: ignore
-    msgpack_serialize as encode_pytree,
-    msgpack_restore   as decode_pytree,
+    msgpack_serialize as pack_pytree,
+    msgpack_restore as unpack_pytree,
 )
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
 from .state import Stone, Board, Coord, Action, unravel, affordance, transitions
+from .network import PyTree
 from .value import Value
 from .policy import Policy, critic
 from .reward import Reward
@@ -21,31 +23,12 @@ class Mode(Flag):
     EXPLOIT = 2
 
 
-class Choice:
-
-    def __init__(self, key):
-        self.key = key
-
-    def __call__(self, items):
-        self.key, subkey = jax.random.split(self.key)
-        return jax.random.choice(subkey, items)
-
-
-class Uniform:
-
-    def __init__(self, key):
-        self.key = key
-
-    def __call__(self):
-        self.key, subkey = jax.random.split(self.key)
-        return jax.random.uniform(subkey)
-
-
 class Agent(ABC):
 
-    def __init__(self, stone: Stone, reward: type[Reward]):
+    def __init__(self, stone: Stone, reward: type[Reward], key: Array):
         self.stone = stone
         self.reward = reward(stone)
+        self._key = key
 
     def eye(self, winner: Stone):
         return self.reward(winner)
@@ -54,13 +37,43 @@ class Agent(ABC):
     def eval(self):
         pass
 
-    @abstractmethod
-    def seed(self, key):
-        pass
+    @property
+    def key(self):
+        self._key, subkey = jax.random.split(self._key)
+        return subkey
+
+    def uniform(self):
+        return jax.random.uniform(self.key)
+
+    def choice(self, items):
+        return jax.random.choice(self.key, items)
 
     @abstractmethod
     def act(self, board: Board) -> Board:
         pass
+
+    @abstractmethod
+    def encode(self) -> PyTree:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def decode(cls, data: PyTree):
+        pass
+
+    def save(self, file):
+        data = self.encode()
+        print(data)
+        msgpack = pack_pytree(data)
+        with open(file, 'wb') as f:
+            f.write(msgpack)
+
+    @classmethod
+    def load(cls, file):
+        with open(file, 'rb') as f:
+            msgpack = f.read()
+        data = unpack_pytree(msgpack)
+        return cls.decode(data)
 
 
 class Amateur(Agent):
@@ -69,56 +82,38 @@ class Amateur(Agent):
         self,
         stone: Stone,
         reward: type[Reward],
-        seed: int = 0,
+        key: Array = jax.random.key(0),
     ):
-        super().__init__(stone, reward)
-        self.seed(jax.random.key(seed))
+        super().__init__(stone, reward, key)
 
     def eval(self):
         return self
-
-    def seed(self, key):
-        self.choice = Choice(key)
 
     def act(self, board: Board) -> Action:
         coords = affordance(board)
         coord = self.choice(coords)
         return self.stone, coord
 
+    def encode(self) -> PyTree:
+        return {
+            'stone':  self.stone,
+            'reward': self.reward.encode(),
+            'key':    jax.random.key_data(self._key),
+        }
+
+    @classmethod
+    def decode(cls, data: PyTree):
+        stone  = data['stone']
+        reward = Reward.decode(data['reward'])
+        key = jax.random.wrap_key_data(data['key'])
+        return cls(stone, reward, key)
+
 
 class Learner(Agent):
-
-    def __init__(
-        self,
-        stone: Stone,
-        reward: type[Reward],
-        value: Value,
-        epsilon: Schedule = ConstantSchedule(0.2),
-        seed: int = 1,
-    ):
-        super().__init__(stone, reward)
-        self.value = value
-        self.epsilon = epsilon
-        self.seed(jax.random.key(seed))
-        self.mode: Mode
 
     def eval(self):
         self.epsilon = ConstantSchedule(0.)
         return self
-
-    def seed(self, key):
-        key1, key2 = jax.random.split(key)
-        self.uniform = Uniform(key1)
-        self.choice = Choice(key2)
-
-    @abstractmethod
-    def save(self, file):
-        pass
-
-    @classmethod
-    @abstractmethod
-    def load(cls, file):
-        pass
 
     @abstractmethod
     def obs(
@@ -136,26 +131,34 @@ class Learner(Agent):
 
 class ValueLearner(Learner):
 
-    def save(self, file):
-        data = {
+    def __init__(
+        self,
+        stone: Stone,
+        reward: type[Reward],
+        value: Value,
+        epsilon: Schedule = ConstantSchedule(0.2),
+        key: Array = jax.random.key(1),
+    ):
+        super().__init__(stone, reward, key)
+        self.value = value
+        self.epsilon = epsilon
+        self.mode: Mode
+
+    def encode(self) -> PyTree:
+        return {
             'stone':  self.stone,
             'reward': self.reward.encode(),
             'value':  self.value.encode(),
+            'key':    jax.random.key_data(self._key),
         }
-        msgpack = encode_pytree(data)
-        print(data)
-        with open(file, 'wb') as f:
-            f.write(msgpack)
 
     @classmethod
-    def load(cls, file):
-        with open(file, 'rb') as f:
-            msgpack = f.read()
-        data = decode_pytree(msgpack)
+    def decode(cls, data: PyTree):
         stone  = data['stone']
         reward = Reward.decode(data['reward'])
         value  = Value.decode(data['value'])
-        return cls(stone, reward, value)
+        key = jax.random.wrap_key_data(data['key'])
+        return cls(stone, reward, value, key)
 
     def top(self, board: Board, coords: list[Coord]) -> Coord:
         boards = transitions(board, self.stone, coords)
@@ -194,32 +197,31 @@ class PolicyLearner(Learner):
         value: Value,
         policy: Policy,
         epsilon: Schedule = ConstantSchedule(0.2),
-        seed: int = 2,
+        key: Array = jax.random.key(2),
     ):
-        super().__init__(stone, reward, value, epsilon)
+        super().__init__(stone, reward, key)
+        self.value = value
         self.policy = policy
+        self.epsilon = epsilon
+        self.mode: Mode
 
-    def save(self, file):
-        data = {
+    def encode(self) -> PyTree:
+        return {
             'stone':  self.stone,
             'reward': self.reward.encode(),
             'value':  self.value.encode(),
             'policy': self.policy.encode(),
+            'key':    jax.random.key_data(self._key),
         }
-        msgpack = encode_pytree(data)
-        with open(file, 'wb') as f:
-            f.write(msgpack)
 
     @classmethod
-    def load(cls, file):
-        with open(file, 'rb') as f:
-            msgpack = f.read()
-        data = decode_pytree(msgpack)
+    def decode(cls, data: PyTree):
         stone  = data['stone']
         reward = Reward.decode(data['reward'])
         value  = Value.decode(data['value'])
         policy = Policy.decode(data['policy'])
-        return cls(stone, reward, value, policy)
+        key = jax.random.wrap_key_data(data['key'])
+        return cls(stone, reward, value, policy, key)
 
     def act(self, board: Board) -> Action:
         if self.uniform() < self.epsilon():

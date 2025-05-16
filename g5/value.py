@@ -1,13 +1,15 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
+from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from .state import Board
-from .network import PyTree, relu, logsumexp, mlp_init_network_params
+from .network import PyTree, relu, mlp_init_network_params
 
 
 class Value(ABC):
 
     params: PyTree
+    _key: Array
 
     @abstractmethod
     def predicts(self, board):
@@ -21,17 +23,22 @@ class Value(ABC):
         return self.predict(boards)
 
     @abstractmethod
-    def update(self, boards_0, rewards, boards_1):
+    def update(self, boards_0, rewards, boards_1, merits_2):
         pass
 
-    def encode(self):
+    @property
+    def key(self):
+        self._key, subkey = jax.random.split(self._key)
+        return subkey
+
+    def encode(self) -> PyTree:
         return {
             'class': self.__class__.__name__,
             'params': self.params,
         }
 
     @classmethod
-    def decode(self, data):
+    def decode(self, data: PyTree):
         match data['class']:
             case 'MLPValue':
                 return MLPValue(data['params'])
@@ -81,13 +88,11 @@ def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
 
 class MLPValue(Value):
 
-    def __init__(self, params: PyTree | None = None, seed=5):
+    def __init__(self, params: PyTree | None = None, key=jax.random.key(5)):
+        self._key = key
         self.params = (
             params if params else
-            mlp_init_network_params(
-                sizes=[225, 900, 900, 225, 1],
-                key=jax.random.key(seed),
-            )
+            mlp_init_network_params([225, 900, 900, 225, 1], self.key)
         )
 
     def predicts(self, board):
