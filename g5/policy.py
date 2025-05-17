@@ -88,10 +88,10 @@ def mlp_loss(params, boards, coords, advantages):
 
 
 @jax.jit
-def mlp_step(params, boards, coords, advantages, beta=1e-2):
+def mlp_step(params, boards, coords, advantages, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards, coords, advantages)
     return [
-        (w - beta * dw, b - beta * db)
+        [w - alpha * dw, b - alpha * db]
         for (w, b), (dw, db) in zip(params, grads)
     ]
 

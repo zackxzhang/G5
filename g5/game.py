@@ -165,7 +165,7 @@ class Simulator:
         self.score  = Score()
         self.agents = agents
         self.folder = folder
-        self.device = 'cpu'
+        self.device = device
         self.n_procs = n_procs
 
     def play(self):

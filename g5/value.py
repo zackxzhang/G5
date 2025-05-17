@@ -81,7 +81,7 @@ def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
 def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards_0, rewards, boards_2, merits_2)
     return [
-        (w - alpha * dw, b - alpha * db)
+        [w - alpha * dw, b - alpha * db]
         for (w, b), (dw, db) in zip(params, grads)
     ]
 
