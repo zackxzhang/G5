@@ -2,22 +2,13 @@ import multiprocessing as mp
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
+from jax import Array                                             # type: ignore
 from collections import defaultdict
 from collections.abc import Iterable
 from itertools import repeat
 from pathlib import Path
 from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
 from .agent import Agent
-
-
-class Permutation:
-
-    def __init__(self, key):
-        self.key = key
-
-    def __call__(self, items):
-        self.key, subkey = jax.random.split(self.key)
-        return jax.random.permutation(subkey, items)
 
 
 class Rollout:
@@ -164,33 +155,44 @@ class Score:
 
 class Simulator:
 
-    def __init__(self, agents: tuple[Agent, Agent], folder: Path = Path('.')):
-        self.agents = agents
+    def __init__(
+        self,
+        agents: tuple[Agent, Agent],
+        folder: Path = Path('.'),
+        device: str = 'cpu',
+        n_procs: int = 8,
+    ):
         self.score  = Score()
+        self.agents = agents
         self.folder = folder
+        self.device = 'cpu'
+        self.n_procs = n_procs
 
-    def run(
+    def play(self):
+        game = Game(self.agents)
+        while True:
+            agent  = game.agent
+            action = agent.act(game.board)
+            winner = game.evo(action)
+            if winner:
+                self.score(winner)
+                print(f"The game took {len(game)} steps.")
+                break
+        return game.rollout
+
+    def work(
         self,
         stage: int,
         division: int,
         n_games: int,
     ) -> tuple[Replay, Replay]:
-        key = jax.random.key(((stage + 3) * division + 7) * 11 + 5)
-        key, key0, key1 = jax.random.split(key, num=3)
-        self.agents[0].seed(key0)
-        self.agents[1].seed(key1)
+        key = jax.random.key(((stage + 3) * (division + 7) + 1) * 11 + 5)
+        key0, key1 = jax.random.split(key)
+        self.agents[0]._key = key0
+        self.agents[1]._key = key1
         replays_p1, replays_p2 = list(), list()
         for _ in range(n_games):
-            game = Game(self.agents)
-            while True:
-                agent  = game.agent
-                action = agent.act(game.board)
-                winner = game.evo(action)
-                if winner:
-                    self.score(winner)
-                    print(f"The game took {len(game)} steps.")
-                    break
-            replay_p1, replay_p2 = memoize(game.rollout)
+            replay_p1, replay_p2 = memoize(self.play())
             replays_p1.append(replay_p1)
             replays_p2.append(replay_p2)
         print(self.score)
@@ -200,19 +202,23 @@ class Simulator:
         self,
         stage: int,
         n_games: int,
-        n_procs=8,
         save: bool = False,
     ) -> tuple[Replay, Replay]:
-        n = n_games // n_procs
-        m = n_games - (n_procs - 1) * n
-        with mp.Pool(n_procs) as pool:
-            replays: list[tuple[Replay, Replay]] = pool.starmap(
-                self.run,
-                zip(repeat(stage), range(n_procs), [n] * (n_procs-1) + [m]),
-            )
-        replays_p1, replays_p2 = list(zip(*replays))
-        replay_p1 = collate(replays_p1)
-        replay_p2 = collate(replays_p2)
+        match self.device:
+            case 'cpu':
+                k = self.n_procs
+                n = n_games // k
+                m = n_games - (k - 1) * n
+                with mp.Pool(k) as pool:
+                    replays: list[tuple[Replay, Replay]] = pool.starmap(
+                        self.work,
+                        zip(repeat(stage), range(k), [n] * (k-1) + [m]),
+                    )
+                replays_p1, replays_p2 = list(zip(*replays))
+                replay_p1 = collate(replays_p1)
+                replay_p2 = collate(replays_p2)
+            case _:
+                replay_p1, replay_p2 = self.work(stage, 0, n_games)
         if save:
             replay_p1.save(self.folder / f'stage-{stage}_p1.npz')
             replay_p2.save(self.folder / f'stage-{stage}_p2.npz')
@@ -221,13 +227,23 @@ class Simulator:
 
 class Loader:
 
-    def __init__(self, replay: Replay, batch_size: int = 32, seed: int = 3):
+    def __init__(
+        self,
+        replay: Replay,
+        batch_size: int = 32,
+        key: Array = jax.random.key(3),
+    ):
         self.replay = replay
         self.batch_size = batch_size
-        self.seed(jax.random.key(seed))
+        self._key = key
 
-    def seed(self, key):
-        self.permute = Permutation(key)
+    @property
+    def key(self):
+        self._key, subkey = jax.random.split(self._key)
+        return subkey
+
+    def permute(self, items):
+        return jax.random.permutation(self.key, items)
 
     def __iter__(self):
         # 4. shuffle
