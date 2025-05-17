@@ -63,7 +63,6 @@ class Agent(ABC):
 
     def save(self, file):
         data = self.encode()
-        print(data)
         msgpack = pack_pytree(data)
         with open(file, 'wb') as f:
             f.write(msgpack)
@@ -146,10 +145,11 @@ class ValueLearner(Learner):
 
     def encode(self) -> PyTree:
         return {
-            'stone':  self.stone,
-            'reward': self.reward.encode(),
-            'value':  self.value.encode(),
-            'key':    jax.random.key_data(self._key),
+            'stone':   self.stone,
+            'reward':  self.reward.encode(),
+            'value':   self.value.encode(),
+            'epsilon': self.epsilon.encode(),
+            'key':     jax.random.key_data(self._key),
         }
 
     @classmethod
@@ -157,8 +157,9 @@ class ValueLearner(Learner):
         stone  = data['stone']
         reward = Reward.decode(data['reward'])
         value  = Value.decode(data['value'])
+        epsilon = Schedule.decode(data['epsilon'])
         key = jax.random.wrap_key_data(data['key'])
-        return cls(stone, reward, value, key)
+        return cls(stone, reward, value, epsilon, key)
 
     def top(self, board: Board, coords: list[Coord]) -> Coord:
         boards = transitions(board, self.stone, coords)
@@ -207,11 +208,12 @@ class PolicyLearner(Learner):
 
     def encode(self) -> PyTree:
         return {
-            'stone':  self.stone,
-            'reward': self.reward.encode(),
-            'value':  self.value.encode(),
-            'policy': self.policy.encode(),
-            'key':    jax.random.key_data(self._key),
+            'stone':   self.stone,
+            'reward':  self.reward.encode(),
+            'value':   self.value.encode(),
+            'policy':  self.policy.encode(),
+            'epsilon': self.epsilon.encode(),
+            'key':     jax.random.key_data(self._key),
         }
 
     @classmethod
@@ -220,8 +222,9 @@ class PolicyLearner(Learner):
         reward = Reward.decode(data['reward'])
         value  = Value.decode(data['value'])
         policy = Policy.decode(data['policy'])
+        epsilon = Schedule.decode(data['epsilon'])
         key = jax.random.wrap_key_data(data['key'])
-        return cls(stone, reward, value, policy, key)
+        return cls(stone, reward, value, policy, epsilon, key)
 
     def act(self, board: Board) -> Action:
         if self.uniform() < self.epsilon():
