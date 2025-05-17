@@ -2,7 +2,6 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
 from jax import Array                                             # type: ignore
-from jax.typing import ArrayLike                                  # type: ignore
 from jaxtyping import Int, Float
 from typing import TypeAlias
 
@@ -57,9 +56,14 @@ kernels = [
 ]
 
 
+@jax.jit
+def conv(x, y):
+    return jsp.signal.convolve2d(x, y, mode='valid')
+
+
 def victorious(board: Board) -> int:
     for kernel in kernels:
-        points = jsp.signal.convolve2d(board, kernel, mode='valid')
+        points = conv(board, kernel)
         if (points == 5).any():
             return 1
         elif (points == -5).any():
@@ -76,5 +80,5 @@ def judge(board: Board) -> Stone:
     if victor != 0:
         return victor
     if impasse(board):
-        return 2
-    return 0
+        return 0
+    return 9

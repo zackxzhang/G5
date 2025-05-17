@@ -103,7 +103,7 @@ class Game:
     def __init__(self, agents: tuple[Agent, Agent]):
         self.agents = agents
         self.round  = 0
-        self.winner = 0
+        self.winner = 9
         self.rollout = Rollout()
 
     def __len__(self):
@@ -118,7 +118,7 @@ class Game:
         return self.rollout.last
 
     def evo(self, action: Action):
-        if self.winner:
+        if self.winner in (-1, 0, +1):
             raise ValueError('game over')
         stone, coord = action
         board = transition(self.board, stone, coord)
@@ -127,7 +127,7 @@ class Game:
         self.rollout.append(coord, reward, board)
         self.winner = winner
         self.round += 1
-        if winner:  # shadow tail of rollout
+        if winner in (-1, 0, +1):  # shadow tail of rollout
             self.rollout.append(proxy, self.agent.eye(winner), board)
         return winner
 
@@ -174,7 +174,7 @@ class Simulator:
             agent  = game.agent
             action = agent.act(game.board)
             winner = game.evo(action)
-            if winner:
+            if winner in (-1, 0, +1):
                 self.score(winner)
                 print(f"The game took {len(game)} steps.")
                 break
