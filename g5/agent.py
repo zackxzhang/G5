@@ -9,7 +9,10 @@ from flax.serialization import (                                  # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
 from math import inf
-from .state import Stone, Board, Coord, Action, unravel, affordance, transitions
+from .state import (
+    Stone, Board, Coord, Coords, Action,
+    unravel, affordance, transitions,
+)
 from .network import PyTree
 from .value import Value
 from .policy import Policy, critic
@@ -49,7 +52,7 @@ class Agent(ABC):
         return jax.random.choice(self.key, items)
 
     @abstractmethod
-    def act(self, board: Board) -> Board:
+    def act(self, board: Board) -> Action:
         pass
 
     @abstractmethod
@@ -161,7 +164,7 @@ class ValueLearner(Learner):
         key = jax.random.wrap_key_data(data['key'])
         return cls(stone, reward, value, epsilon, key)
 
-    def top(self, board: Board, coords: list[Coord]) -> Coord:
+    def top(self, board: Board, coords: Coords) -> Coord:
         boards = transitions(board, self.stone, coords)
         values = self.value(boards)
         return coords[jnp.argmax(values)]
@@ -234,7 +237,7 @@ class PolicyLearner(Learner):
             self.mode = Mode.EXPLOIT
             logpbs = self.policy.predicts(board)
             logpbs = jnp.where(board == 0, logpbs, jnp.nan)
-            coord = unravel(jnp.nanargmax(logpbs))
+            coord = unravel(int(jnp.nanargmax(logpbs)))
         return self.stone, coord
 
     def obs(

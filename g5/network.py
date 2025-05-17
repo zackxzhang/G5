@@ -16,7 +16,7 @@ def mlp_init_layer_params(m, n, key, scale=1e-2):
     w_key, b_key = jax.random.split(key)
     return [
         scale * jax.random.normal(w_key, (n, m)),
-        scale * jax.random.normal(b_key, (n,))
+        scale * jax.random.normal(b_key, (n,  )),
     ]
 
 

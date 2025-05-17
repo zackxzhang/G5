@@ -32,7 +32,7 @@ class Schedule(ABC):
         }
 
     @classmethod
-    def decode(self, data):
+    def decode(cls, data):
         match data['class']:
             case 'ConstantSchedule':
                 return ConstantSchedule(**data['params'])

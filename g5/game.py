@@ -45,7 +45,7 @@ columns = [
 class Replay:
 
     def __init__(self, data: dict | None = None):
-        self.data = data if data else {col: np.array() for col in columns}
+        self.data = data if data else {col: jnp.array([]) for col in columns}
 
     def __len__(self):
         return len(self.data['rewards'])

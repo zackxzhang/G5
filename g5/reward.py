@@ -8,7 +8,7 @@ class Reward(ABC):
         self.stone = stone
 
     @abstractmethod
-    def __call__(self, winner: Stone):
+    def __call__(self, winner: Stone) -> int:
         pass
 
     def encode(self):
@@ -17,7 +17,7 @@ class Reward(ABC):
         }
 
     @classmethod
-    def decode(self, data):
+    def decode(cls, data):
         match data['class']:
             case 'Victory':
                 return Victory

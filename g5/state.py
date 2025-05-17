@@ -2,13 +2,14 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
 from jax import Array                                             # type: ignore
-from jaxtyping import Int, Float
+from jaxtyping import Int
 from typing import TypeAlias
 
 
 Stone: TypeAlias = int
 Board: TypeAlias = Int[Array, '15 15']
 Coord: TypeAlias = Int[Array, '1 2']
+Coords: TypeAlias = Int[Array, 'B 1 2']
 Action: TypeAlias = tuple[Stone, Coord]
 
 
@@ -25,14 +26,14 @@ def _stringify(stone):
         case 0:
             return '_'
         case _:
-            raise ValueError(f'unrecognized stone {_}')
+            raise ValueError(f'unrecognized stone {stone}')
 
 
 def stringify(board: Board) -> str:
     return '\n'.join(''.join(map(_stringify, row)) for row in board)
 
 
-def affordance(board: Board) -> list[Coord]:
+def affordance(board: Board) -> Coords:
     return jnp.argwhere(board == 0)
 
 
@@ -72,7 +73,7 @@ def victorious(board: Board) -> int:
 
 
 def impasse(board: Board) -> bool:
-    return (board == 0).sum() == 0
+    return bool((board == 0).sum() == 0)
 
 
 def judge(board: Board) -> Stone:

@@ -12,11 +12,11 @@ class Value(ABC):
     _key: Array
 
     @abstractmethod
-    def predicts(self, board):
+    def predicts(self, board) -> Array:
         pass
 
     @abstractmethod
-    def predict(self, boards):
+    def predict(self, boards) -> Array:
         pass
 
     def __call__(self, boards):
@@ -38,7 +38,7 @@ class Value(ABC):
         }
 
     @classmethod
-    def decode(self, data: PyTree):
+    def decode(cls, data: PyTree):
         match data['class']:
             case 'MLPValue':
                 return MLPValue(data['params'])
