@@ -13,6 +13,7 @@ Coords: TypeAlias = Int[Array, 'B 1 2']
 Action: TypeAlias = tuple[Stone, Coord]
 
 
+cpu = jax.devices('cpu')[0]
 onset = jnp.zeros((15, 15), dtype=jnp.int32)
 proxy = jnp.zeros((2,), dtype=jnp.int32)
 
@@ -57,9 +58,11 @@ kernels = [
 ]
 
 
-@jax.jit
 def conv(x, y):
     return jsp.signal.convolve2d(x, y, mode='valid')
+
+
+conv = jax.jit(conv, device=cpu)
 
 
 def victorious(board: Board) -> int:
