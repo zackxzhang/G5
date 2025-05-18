@@ -59,16 +59,7 @@ def mlp_predict(params, board):
     return jnp.dot(w, acts) + b
 
 
-# mlp_predict_batch = jax.vmap(mlp_predict, in_axes=(None, 0))
-
-
-def mlp_predict_batch(params, boards):
-    acts = boards.reshape(boards.shape[0], -1)
-    for w, b in params[:-1]:
-        outs = acts @ w.T + b[None, ...]
-        acts = relu(outs)
-    w, b = params[-1]
-    return acts @ w.T + b[None, ...]
+mlp_predict_batch = jax.vmap(mlp_predict, in_axes=(None, 0))
 
 
 def advantage(values_0, rewards, values_2, gamma=1.0):
