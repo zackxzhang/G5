@@ -1,6 +1,7 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
+from functools import partial
 from jax import Array                                             # type: ignore
 from jaxtyping import Int
 from typing import TypeAlias
@@ -46,18 +47,18 @@ def unravel(index: int) -> Coord:
     return jnp.array([i, j])
 
 
-transitions = jax.vmap(transition, in_axes=(None, None, 0))
+transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)), backend='cpu')
 
 
 kernels = [
-    jnp.ones((1, 5)),
-    jnp.ones((5, 1)),
-    jnp.eye(5),
-    jnp.fliplr(jnp.eye(5)),
+    jnp.ones((1, 5), dtype=float),
+    jnp.ones((5, 1), dtype=float),
+    jnp.eye(5, dtype=float),
+    jnp.fliplr(jnp.eye(5, dtype=float)),
 ]
 
 
-@jax.jit
+@partial(jax.jit, backend='cpu')
 def conv(x, y):
     return jsp.signal.convolve2d(x, y, mode='valid')
 
@@ -72,8 +73,9 @@ def victorious(board: Board) -> int:
     return 0
 
 
-def impasse(board: Board) -> bool:
-    return bool((board == 0).sum() == 0)
+@partial(jax.jit, backend='cpu')
+def impasse(board: Board):
+    return (board == 0).sum() == 0
 
 
 def judge(board: Board) -> Stone:
