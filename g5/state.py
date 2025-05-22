@@ -5,6 +5,7 @@ from functools import partial
 from jax import Array                                             # type: ignore
 from jaxtyping import Int
 from typing import TypeAlias
+from .device import backend
 
 
 Stone: TypeAlias = int
@@ -14,8 +15,8 @@ Coords: TypeAlias = Int[Array, 'B 1 2']
 Action: TypeAlias = tuple[Stone, Coord]
 
 
-onset = jnp.zeros((15, 15), dtype=jnp.int32)
-proxy = jnp.zeros((2,), dtype=jnp.int32)
+onset = jnp.zeros((15, 15), dtype=int)
+proxy = jnp.zeros((2,), dtype=int)
 
 
 def _stringify(stone):
@@ -47,7 +48,7 @@ def unravel(index: int) -> Coord:
     return jnp.array([i, j])
 
 
-transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)), backend='cpu')
+transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)), backend=backend)
 
 
 kernels = [
