@@ -1,11 +1,9 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
-from functools import partial
 from jax import Array                                             # type: ignore
 from jaxtyping import Int
 from typing import TypeAlias
-from .device import backend
 
 
 Stone: TypeAlias = int
@@ -48,7 +46,7 @@ def unravel(index: int) -> Coord:
     return jnp.array([i, j])
 
 
-transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)), backend=backend)
+transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)))
 
 
 kernels = [
@@ -59,7 +57,7 @@ kernels = [
 ]
 
 
-@partial(jax.jit, backend='cpu')
+@jax.jit
 def conv(x, y):
     return jsp.signal.convolve2d(x, y, mode='valid')
 
@@ -74,7 +72,7 @@ def victorious(board: Board) -> int:
     return 0
 
 
-@partial(jax.jit, backend='cpu')
+@jax.jit
 def impasse(board: Board):
     return (board == 0).sum() == 0
 

@@ -1,11 +1,9 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
-from functools import partial
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from .state import Board
 from .network import PyTree, relu, mlp_init_network_params
-from .device import backend
 
 
 class Value(ABC):
@@ -52,7 +50,7 @@ class Value(ABC):
                 raise ValueError(f"no value class named {data['class']}")
 
 
-@partial(jax.jit, backend=backend)
+@jax.jit
 def mlp_predict(params, board):
     acts = board.ravel()
     for w, b in params[:-1]:
@@ -62,7 +60,7 @@ def mlp_predict(params, board):
     return jnp.dot(w, acts) + b
 
 
-mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)), backend=backend)
+mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)))
 
 
 def advantage(values_0, rewards, values_2, gamma=1.0):
@@ -80,7 +78,7 @@ def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
     return jnp.sum(advantages**2)
 
 
-@partial(jax.jit, backend=backend)
+@jax.jit
 def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards_0, rewards, boards_2, merits_2)
     return [

@@ -2,7 +2,6 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax.scipy.special import logsumexp                           # type: ignore
 from typing import Any, TypeAlias
-from .device import device
 
 
 PyTree: TypeAlias = Any
@@ -21,9 +20,8 @@ def mlp_init_layer_params(m, n, key, scale=1e-2):
 
 
 def mlp_init_network_params(sizes, key):
-    with jax.default_device(device):
-        keys = jax.random.split(key, len(sizes))
-        return [
-            mlp_init_layer_params(m, n, k)
-            for m, n, k in zip(sizes[:-1], sizes[1:], keys)
-        ]
+    keys = jax.random.split(key, len(sizes))
+    return [
+        mlp_init_layer_params(m, n, k)
+        for m, n, k in zip(sizes[:-1], sizes[1:], keys)
+    ]

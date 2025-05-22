@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from .state import Board, Coord
 from .network import PyTree, relu, logsumexp, mlp_init_network_params
 from .value import advantage
-from .device import backend
 
 
 class Policy(ABC):
@@ -53,7 +52,7 @@ class Policy(ABC):
                 raise ValueError(f"no policy class named {data['class']}")
 
 
-@partial(jax.jit, backend=backend)
+@jax.jit
 def mlp_predict(params, board):
     acts = board.ravel()
     for w, b in params[:-1]:
@@ -65,10 +64,10 @@ def mlp_predict(params, board):
     return logpbs.reshape((15, 15))
 
 
-mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)), backend=backend)
+mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)))
 
 
-@partial(jax.jit, backend=backend)
+@jax.jit
 def critic(value_fn, boards_0, rewards, boards_2, merits_2, edges):
     values_0 = value_fn(boards_0)
     values_2 = jnp.where(
@@ -91,7 +90,7 @@ def mlp_loss(params, boards, coords, advantages):
     return jnp.sum(advantages * logpas)
 
 
-@partial(jax.jit, backend=backend)
+@jax.jit
 def mlp_step(params, boards, coords, advantages, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards, coords, advantages)
     return [
