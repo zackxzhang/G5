@@ -54,7 +54,7 @@ class Replay:
         return self.data[key]
 
     def save(self, path: Path):
-        np.savez(path, **self.data)
+        np.savez(path, **self.data)  # type: ignore
 
     @classmethod
     def load(cls, path: Path):
@@ -159,8 +159,8 @@ class Simulator:
         self,
         agents: tuple[Agent, Agent],
         folder: Path = Path('.'),
-        device: str = 'cpu',
-        n_procs: int = 8,
+        device: str = 'cuda',
+        n_procs: int = 1,
     ):
         self.score  = Score()
         self.agents = agents
@@ -176,7 +176,6 @@ class Simulator:
             winner = game.evo(action)
             if winner in (-1, 0, +1):
                 self.score(winner)
-                print(f"The game took {len(game)} steps.")
                 break
         return game.rollout
 
@@ -204,21 +203,20 @@ class Simulator:
         n_games: int,
         save: bool = False,
     ) -> tuple[Replay, Replay]:
-        match self.device:
-            case 'cpu':
-                k = self.n_procs
-                n = n_games // k
-                m = n_games - (k - 1) * n
-                with mp.Pool(k) as pool:
-                    replays: list[tuple[Replay, Replay]] = pool.starmap(
-                        self.work,
-                        zip(repeat(stage), range(k), [n] * (k-1) + [m]),
-                    )
-                replays_p1, replays_p2 = list(zip(*replays))
-                replay_p1 = collate(replays_p1)
-                replay_p2 = collate(replays_p2)
-            case _:
-                replay_p1, replay_p2 = self.work(stage, 0, n_games)
+        if self.device == 'cpu' and self.n_procs > 1:
+            k = self.n_procs
+            n = n_games // k
+            m = n_games - (k - 1) * n
+            with mp.Pool(k) as pool:
+                replays: list[tuple[Replay, Replay]] = pool.starmap(
+                    self.work,
+                    zip(repeat(stage), range(k), [n] * (k-1) + [m]),
+                )
+            replays_p1, replays_p2 = list(zip(*replays))
+            replay_p1 = collate(replays_p1)
+            replay_p2 = collate(replays_p2)
+        else:
+            replay_p1, replay_p2 = self.work(stage, 0, n_games)
         if save:
             replay_p1.save(self.folder / f'stage-{stage}_p1.npz')
             replay_p2.save(self.folder / f'stage-{stage}_p2.npz')

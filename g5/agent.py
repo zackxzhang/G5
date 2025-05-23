@@ -1,14 +1,12 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
-import numpy as np                                                # type: ignore
 from flax.serialization import (                                  # type: ignore
     msgpack_serialize as pack_pytree,
     msgpack_restore as unpack_pytree,
 )
 from abc import ABC, abstractmethod
 from enum import Flag
-from math import inf
 from .state import (
     Stone, Board, Coord, Coords, Action,
     unravel, affordance, transitions,
