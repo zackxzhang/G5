@@ -7,15 +7,15 @@
 - [ ] user interface
 
 ##### deep learning
-- [ ] value estimator
-- [ ] policy estimator
+- [x] value estimator
+- [x] policy estimator
 - [x] rate scheduling
 
 ##### reinforcement learning
 - [x] reward shaping
 - [ ] importance sampling
-- [ ] experience replay
-- [ ] self reinforcement
+- [x] experience replay
+- [x] self reinforcement
 
 ##### tree search
 - [ ] minimax
