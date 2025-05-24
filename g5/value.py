@@ -11,6 +11,12 @@ class Value(ABC):
     params: PyTree
     _key: Array
 
+    def __init__(self):
+        self.learnable = True
+
+    def eval(self):
+        self.learnable = False
+
     @abstractmethod
     def predicts(self, board) -> Array:
         pass
@@ -90,10 +96,11 @@ def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
 class MLPValue(Value):
 
     def __init__(self, params: PyTree | None = None, key=jax.random.key(5)):
+        super().__init__()
         self._key = key
         self.params = (
             params if params else
-            mlp_init_network_params([225, 2250, 4500, 2250, 225, 1], self.key)
+            mlp_init_network_params([225, 900, 3600, 900, 225, 1], self.key)
         )
 
     def predicts(self, board):
@@ -103,13 +110,16 @@ class MLPValue(Value):
         return mlp_predict_batch(self.params, boards)
 
     def update(self, boards_0, rewards, boards_2, merits_2):
-        self.params = mlp_step(
-            self.params,
-            boards_0,
-            rewards,
-            boards_2,
-            merits_2,
-        )
+        if self.learnable:
+            self.params = mlp_step(
+                self.params,
+                boards_0,
+                rewards,
+                boards_2,
+                merits_2,
+            )
+        else:
+            pass
 
 
 class CNNValue(Value):

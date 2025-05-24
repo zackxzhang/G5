@@ -111,6 +111,17 @@ class Amateur(Agent):
 
 class Learner(Agent):
 
+    def __init__(
+        self,
+        stone: Stone,
+        reward: type[Reward],
+        epsilon: Schedule,
+        key: Array,
+    ):
+        super().__init__(stone, reward, key)
+        self.epsilon = epsilon
+        self.mode: Mode
+
     def eval(self):
         self.epsilon = ConstantSchedule(0.)
         return self
@@ -136,13 +147,15 @@ class ValueLearner(Learner):
         stone: Stone,
         reward: type[Reward],
         value: Value,
-        epsilon: Schedule = ConstantSchedule(0.2),
+        epsilon: Schedule,
         key: Array = jax.random.key(1),
     ):
-        super().__init__(stone, reward, key)
+        super().__init__(stone, reward, epsilon, key)
         self.value = value
-        self.epsilon = epsilon
-        self.mode: Mode
+
+    def eval(self):
+        self.value.eval()
+        return super().eval()
 
     def encode(self) -> PyTree:
         return {
@@ -198,14 +211,17 @@ class PolicyLearner(Learner):
         reward: type[Reward],
         value: Value,
         policy: Policy,
-        epsilon: Schedule = ConstantSchedule(0.2),
+        epsilon: Schedule,
         key: Array = jax.random.key(2),
     ):
-        super().__init__(stone, reward, key)
+        super().__init__(stone, reward, epsilon, key)
         self.value = value
         self.policy = policy
-        self.epsilon = epsilon
-        self.mode: Mode
+
+    def eval(self):
+        self.value.eval()
+        self.policy.eval()
+        return super().eval()
 
     def encode(self) -> PyTree:
         return {

@@ -1,6 +1,5 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
-from functools import partial
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from .state import Board, Coord
@@ -12,6 +11,12 @@ class Policy(ABC):
 
     params: PyTree
     _key: Array
+
+    def __init__(self):
+        self.learnable = True
+
+    def eval(self):
+        self.learnable = False
 
     @abstractmethod
     def predicts(self, board) -> Array:
@@ -101,10 +106,11 @@ def mlp_step(params, boards, coords, advantages, alpha=1e-2):
 class MLPPolicy(Policy):
 
     def __init__(self, params: PyTree | None = None, key=jax.random.key(6)):
+        super().__init__()
         self._key = key
         self.params = (
             params if params else
-            mlp_init_network_params([225, 900, 900, 225], self.key)
+            mlp_init_network_params([225, 900, 3600, 900, 225], self.key)
         )
 
     def predicts(self, board):
@@ -114,7 +120,10 @@ class MLPPolicy(Policy):
         return mlp_predict_batch(self.params, boards)
 
     def update(self, boards, coords, advantages):
-        self.params = mlp_step(self.params, boards, coords, advantages)
+        if self.learnable:
+            self.params = mlp_step(self.params, boards, coords, advantages)
+        else:
+            pass
 
 
 class UNetPolicy(Policy):
