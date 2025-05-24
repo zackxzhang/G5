@@ -248,8 +248,8 @@ class PolicyLearner(Learner):
         merits_2,
         edges,
     ):
-        advantages = critic(
-            self.value, boards_0, rewards, boards_2, merits_2, edges
-        )
+        values_0 = self.value(boards_0)
+        values_2 = self.value(boards_2)
+        advantages = critic(values_0, rewards, values_2, merits_2, edges)
         self.policy.update(boards_1, coords, advantages)
         self.value.update(boards_0, rewards, boards_2, merits_2)

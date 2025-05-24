@@ -68,11 +68,10 @@ mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)))
 
 
 @jax.jit
-def critic(value_fn, boards_0, rewards, boards_2, merits_2, edges):
-    values_0 = value_fn(boards_0)
+def critic(values_0, rewards, values_2, merits_2, edges):
     values_2 = jnp.where(
         jnp.isnan(merits_2),
-        value_fn(boards_2),
+        values_2,
         merits_2,
     )
     advantages = jnp.where(
