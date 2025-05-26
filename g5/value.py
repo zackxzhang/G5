@@ -2,8 +2,15 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
+from functools import partial
 from .state import Board
-from .network import PyTree, relu, mlp_init_network_params
+from .network import (
+    PyTree, step, relu, flatten,
+    encode_layers, decode_layers,
+    InputLayer, Conv2DLayer, MaxPoolLayer, FlattenLayer, DenseLayer,
+    mlp_init_network_params, mlp_forward, mlp_forward_batch,
+    cnn_init_network_params, cnn_forward, cnn_forward_batch,
+)
 
 
 class Value(ABC):
@@ -38,36 +45,32 @@ class Value(ABC):
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
+    @abstractmethod
     def encode(self) -> PyTree:
-        return {
-            'class': self.__class__.__name__,
-            'params': self.params,
-        }
+        pass
 
     @classmethod
     def decode(cls, data: PyTree):
-        match data['class']:
+        genre = data.pop('class')
+        match genre:
             case 'MLPValue':
-                return MLPValue(data['params'])
-            # case 'CNNValue':
-            #     return CNNValue(data['params'])
+                return MLPValue.decode(**data)
+            case 'CNNValue':
+                return CNNValue.decode(**data)
             # case 'G5Value':
-            #     return G5Value(data['params'])
+            #     return G5Value(**data)
             case _:
-                raise ValueError(f"no value class named {data['class']}")
+                raise ValueError(f"unknown value class: {genre}")
 
 
 @jax.jit
 def mlp_predict(params, board):
-    acts = board.ravel()
-    for w, b in params[:-1]:
-        outs = jnp.dot(w, acts) + b
-        acts = relu(outs)
-    w, b = params[-1]
-    return jnp.dot(w, acts) + b
+    return mlp_forward(params, board.ravel())
 
 
-mlp_predict_batch = jax.jit(jax.vmap(mlp_predict, in_axes=(None, 0)))
+@jax.jit
+def mlp_predict_batch(params, boards):
+    return mlp_forward_batch(params, flatten(boards))
 
 
 def advantage(values_0, rewards, values_2, gamma=1.0):
@@ -89,9 +92,12 @@ def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
 def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards_0, rewards, boards_2, merits_2)
     return [
-        [w - alpha * dw, b - alpha * db]
-        for (w, b), (dw, db) in zip(params, grads)
+        [W - alpha * dW, b - alpha * db]
+        for (W, b), (dW, db) in zip(params, grads)
     ]
+
+
+mlp_default_sizes = [225, 900, 3600, 900, 225, 1]
 
 
 class MLPValue(Value):
@@ -101,8 +107,21 @@ class MLPValue(Value):
         self._key = key
         self.params = (
             params if params else
-            mlp_init_network_params([225, 900, 3600, 900, 225, 1], self.key)
+            mlp_init_network_params(mlp_default_sizes, self.key)
         )
+
+    def encode(self):
+        return {
+            'class':  self.__class__.__name__,
+            'params': self.params,
+            'key':    jax.random.key_data(self._key),
+        }
+
+    @classmethod
+    def decode(cls, data: PyTree):
+        params = data['params']
+        key = jax.random.wrap_key_data(data['key'])
+        return cls(params, key)
 
     def predicts(self, board):
         return mlp_predict(self.params, board)
@@ -123,9 +142,134 @@ class MLPValue(Value):
             pass
 
 
+@partial(jax.jit, static_argnames=('layers',))
+def cnn_predict(params, layers, board):
+    intake = jnp.expand_dims(board.astype(float), axis=-3)
+    return cnn_forward(params, layers, intake)
+
+
+@partial(jax.jit, static_argnames=('layers',))
+def cnn_predict_batch(params, layers, boards):
+    inputs = jnp.expand_dims(boards.astype(float), axis=-3)
+    return cnn_forward_batch(params, layers, inputs)
+
+
+@partial(jax.jit, static_argnames=('layers',))
+def cnn_loss(params, layers, boards_0, rewards, boards_2, merits_2):
+    values_0 = cnn_predict_batch(params, layers, boards_0)
+    values_2 = jnp.where(
+        jnp.isnan(merits_2),
+        cnn_predict_batch(params, layers, boards_2),
+        merits_2,
+    )
+    advantages = advantage(values_0, rewards, jax.lax.stop_gradient(values_2))
+    return jnp.sum(advantages**2)
+
+
+@partial(jax.jit, static_argnames=('layers',))
+def cnn_step(params, layers, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
+    grads = jax.grad(cnn_loss)(
+        params,
+        layers,
+        boards_0,
+        rewards,
+        boards_2,
+        merits_2,
+    )
+    return step(params, grads, alpha)
+
+
+cnn_default_layers = (
+    InputLayer(
+        shape=(None, 1, 15, 15),
+    ),
+    Conv2DLayer(
+        channels=64,
+        kernel_size=(5, 5),
+        strides=(1, 1),
+        padding='SAME',
+        activation='relu',
+    ),
+    MaxPoolLayer(
+        pool_size=(3, 3),
+        strides=(3, 3),
+        padding='VALID',
+    ),
+    Conv2DLayer(
+        channels=256,
+        kernel_size=(5, 5),
+        strides=(1, 1),
+        padding='VALID',
+        activation='relu',
+    ),
+    FlattenLayer(),
+    DenseLayer(
+        units=512,
+        activation='relu',
+    ),
+    DenseLayer(
+        units=128,
+        activation='relu',
+    ),
+    DenseLayer(
+        units=32,
+        activation='relu',
+    ),
+    DenseLayer(
+        units=1,
+        activation='sigmoid',
+    ),
+)
+
+
 class CNNValue(Value):
 
-    ...
+    def __init__(self,
+        layers=None,
+        params: PyTree | None = None,
+        key=jax.random.key(7),
+    ):
+        super().__init__()
+        self._key = key
+        self.layers = layers if layers else cnn_default_layers
+        self.params = (
+            params if params else
+            cnn_init_network_params(self.layers, self.key)
+        )
+
+    def encode(self):
+        return {
+            'class':  self.__class__.__name__,
+            'layers': encode_layers(self.layers),
+            'params': self.params,
+            'key':    jax.random.key_data(self._key),
+        }
+
+    @classmethod
+    def decode(cls, data: PyTree):
+        layers = decode_layers(data['layers'])
+        params = data['params']
+        key = jax.random.wrap_key_data(data['key'])
+        return cls(layers, params, key)
+
+    def predicts(self, board):
+        return cnn_predict(self.params, self.layers, board)
+
+    def predict(self, boards):
+        return cnn_predict_batch(self.params, self.layers, boards)
+
+    def update(self, boards_0, rewards, boards_2, merits_2):
+        if self.learnable:
+            self.params = cnn_step(
+                self.params,
+                self.layers,
+                boards_0,
+                rewards,
+                boards_2,
+                merits_2,
+            )
+        else:
+            pass
 
 
 class G5Value(Value):
