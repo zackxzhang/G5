@@ -7,7 +7,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 from itertools import repeat
 from pathlib import Path
-from .state import Stone, Board, Coord, Action, onset, proxy, transition, judge
+from .hint import Stone, Board, Coord, Action
+from .state import onset, proxy, transition, judge
 from .agent import Agent
 
 

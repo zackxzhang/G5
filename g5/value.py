@@ -1,11 +1,10 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
-from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from functools import partial
-from .state import Board
+from .hint import Board, Array, PyTree, Key
 from .network import (
-    PyTree, step, relu, flatten,
+    step, relu, flatten,
     encode_layers, decode_layers,
     InputLayer, Conv2DLayer, MaxPoolLayer, FlattenLayer, DenseLayer,
     mlp_init_network_params, mlp_forward, mlp_forward_batch,
@@ -16,7 +15,7 @@ from .network import (
 class Value(ABC):
 
     params: PyTree
-    _key: Array
+    _key: Key
 
     def __init__(self):
         self.learnable = True

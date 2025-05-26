@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from .state import Stone
+from .hint import Stone
 
 
 class Reward(ABC):

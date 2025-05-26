@@ -1,23 +1,14 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
-from jax import Array                                             # type: ignore
-from jaxtyping import Int
-from typing import TypeAlias
-
-
-Stone: TypeAlias = int
-Board: TypeAlias = Int[Array, '15 15']
-Coord: TypeAlias = Int[Array, '1 2']
-Coords: TypeAlias = Int[Array, 'N 1 2']
-Action: TypeAlias = tuple[Stone, Coord]
+from .hint import Stone, Board, Coord, Coords
 
 
 onset = jnp.zeros((15, 15), dtype=int)
 proxy = jnp.zeros((2,), dtype=int)
 
 
-def _stringify(stone):
+def _stringify(stone: Stone):
     match stone:
         case 1:
             return 'X'

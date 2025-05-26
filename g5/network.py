@@ -5,10 +5,8 @@ import numpy as np                                                # type: ignore
 from jax.scipy.special import logsumexp                           # type: ignore
 from jax.nn import relu, sigmoid                                  # type: ignore
 from functools import partial
-from typing import NamedTuple, Any, TypeAlias
-
-
-PyTree: TypeAlias = Any
+from typing import NamedTuple
+from .hint import Layers, Key
 
 
 def mlp_init_layer_params(m, n, key, scale=1e-2):
@@ -112,7 +110,7 @@ def dense_init_layer_params(input_dim, output_dim, key):
     return W, b
 
 
-LAYERS = {}
+LAYERS: dict[str, type[NamedTuple]] = dict()
 
 
 def register(cls):
@@ -170,7 +168,7 @@ def decode_layers(data):
     return tuple(layers)
 
 
-def cnn_init_network_params(layers: tuple, key):
+def cnn_init_network_params(layers: Layers, key: Key):
     params = list()
     keys = jax.random.split(key, len(layers))
     shape = layers[0].shape

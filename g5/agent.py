@@ -7,11 +7,8 @@ from flax.serialization import (                                  # type: ignore
 )
 from abc import ABC, abstractmethod
 from enum import Flag
-from .state import (
-    Stone, Board, Coord, Coords, Action,
-    unravel, affordance, transitions,
-)
-from .network import PyTree
+from .state import unravel, affordance, transitions
+from .hint import Stone, Board, Coord, Coords, Action, PyTree
 from .value import Value
 from .policy import Policy, critic
 from .reward import Reward

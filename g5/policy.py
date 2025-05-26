@@ -2,15 +2,15 @@ import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
-from .state import Board, Coord
-from .network import PyTree, relu, logsumexp, mlp_init_network_params
+from .hint import Board, Coord, PyTree, Key
+from .network import relu, logsumexp, mlp_init_network_params
 from .value import advantage
 
 
 class Policy(ABC):
 
     params: PyTree
-    _key: Array
+    _key: Key
 
     def __init__(self):
         self.learnable = True
