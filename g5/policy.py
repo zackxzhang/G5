@@ -17,6 +17,7 @@ class Policy(ABC):
 
     def eval(self):
         self.learnable = False
+        return self
 
     @abstractmethod
     def predicts(self, board) -> Array:

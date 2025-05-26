@@ -194,7 +194,6 @@ class Simulator:
             replay_p1, replay_p2 = memoize(self.play())
             replays_p1.append(replay_p1)
             replays_p2.append(replay_p2)
-        print(self.score)
         return collate(replays_p1), collate(replays_p2)
 
     def __call__(
