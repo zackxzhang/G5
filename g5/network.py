@@ -1,12 +1,11 @@
-import json
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import numpy as np                                                # type: ignore
 from jax.scipy.special import logsumexp                           # type: ignore
 from jax.nn import relu, sigmoid                                  # type: ignore
 from functools import partial
-from typing import NamedTuple
-from .hint import Layers, Key
+from .hint import Layer, Layers, Key, PyTree
+from .codec import register, encode_layers, decode_layers
 
 
 def mlp_init_layer_params(m, n, key, scale=1e-2):
@@ -110,21 +109,13 @@ def dense_init_layer_params(input_dim, output_dim, key):
     return W, b
 
 
-LAYERS: dict[str, type[NamedTuple]] = dict()
-
-
-def register(cls):
-    LAYERS[cls.__name__] = cls
-    return cls
-
-
 @register
-class InputLayer(NamedTuple):
+class InputLayer(Layer):
     shape: tuple[int | None, int, int, int]
 
 
 @register
-class Conv2DLayer(NamedTuple):
+class Conv2DLayer(Layer):
     channels: int
     kernel_size: tuple[int, int]
     strides: tuple[int, int]
@@ -133,46 +124,28 @@ class Conv2DLayer(NamedTuple):
 
 
 @register
-class MaxPoolLayer(NamedTuple):
+class MaxPoolLayer(Layer):
     pool_size: tuple[int, int]
     strides: tuple[int, int]
     padding: str
 
 
 @register
-class FlattenLayer(NamedTuple):
+class FlattenLayer(Layer):
     pass
 
 
 @register
-class DenseLayer(NamedTuple):
+class DenseLayer(Layer):
     units: int
     activation: str
 
 
-def encode_layers(layers):
-    return [
-        {'class': layer.__class__.__name__, **layer._asdict()}
-        for layer in layers
-    ]
-
-
-def decode_layers(data):
-    layers = list()
-    for spec in data:
-        genre = spec.pop('class')
-        cls = LAYERS.get(genre)
-        if cls is None:
-            raise ValueError(f"unknown layer: {genre}")
-        layers.append(cls(**spec))
-    return tuple(layers)
-
-
 def cnn_init_network_params(layers: Layers, key: Key):
-    params = list()
+    params: PyTree = list()
     keys = jax.random.split(key, len(layers))
-    shape = layers[0].shape
-    shapes = [shape]
+    assert (inputs := layers[0]) and isinstance(inputs, InputLayer)
+    shape: tuple = inputs.shape
     for j, layer in enumerate(layers[1:]):
         match layer:
             case Conv2DLayer(
@@ -206,8 +179,6 @@ def cnn_init_network_params(layers: Layers, key: Key):
                 shape = (None, units)
             case _:
                 raise ValueError(f"unknown layer: {layer}")
-        shapes.append(shape)
-    print('cnn_init_network_params', shapes)
     return params
 
 

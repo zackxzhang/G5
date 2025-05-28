@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from .hint import Board, Coord, PyTree, Key
 from .network import relu, logsumexp, mlp_init_network_params
 from .value import advantage
+from .codec import encode_key, decode_key
 
 
 class Policy(ABC):
@@ -39,33 +40,32 @@ class Policy(ABC):
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
+    @abstractmethod
     def encode(self) -> PyTree:
-        return {
-            'class': self.__class__.__name__,
-            'params': self.params,
-        }
+        pass
 
     @classmethod
     def decode(cls, data: PyTree):
-        match data['class']:
+        genre = data.pop('class')
+        match genre:
             case 'MLPPolicy':
-                return MLPPolicy(data['params'])
+                return MLPPolicy.decode(data)
             # case 'UNetPolicy':
-            #     return UNetPolicy(data['params'])
+            #     return UNetPolicy.decode(data)
             # case 'G5Policy':
-            #     return G5Policy(data['params'])
+            #     return G5Policy.decode(data)
             case _:
-                raise ValueError(f"no policy class named {data['class']}")
+                raise ValueError(f"no policy class: {genre}")
 
 
 @jax.jit
 def mlp_predict(params, board):
-    acts = board.ravel()
-    for w, b in params[:-1]:
-        outs = jnp.dot(w, acts) + b
-        acts = relu(outs)
-    w, b = params[-1]
-    logits = jnp.dot(w, acts) + b
+    x = board.ravel()
+    for W, b in params[:-1]:
+        z = W @ x + b
+        x = relu(z)
+    W, b = params[-1]
+    logits = W @ x + b
     logpbs = logits - logsumexp(logits)
     return logpbs.reshape((15, 15))
 
@@ -99,8 +99,8 @@ def mlp_loss(params, boards, coords, advantages):
 def mlp_step(params, boards, coords, advantages, alpha=1e-2):
     grads = jax.grad(mlp_loss)(params, boards, coords, advantages)
     return [
-        [w - alpha * dw, b - alpha * db]
-        for (w, b), (dw, db) in zip(params, grads)
+        [W - alpha * dW, b - alpha * db]
+        for (W, b), (dW, db) in zip(params, grads)
     ]
 
 
@@ -113,6 +113,19 @@ class MLPPolicy(Policy):
             params if params else
             mlp_init_network_params([225, 900, 3600, 900, 225], self.key)
         )
+
+    def encode(self) -> PyTree:
+        return {
+            'class': self.__class__.__name__,
+            'params': self.params,
+            'key':    encode_key(self._key),
+        }
+
+    @classmethod
+    def decode(cls, data: PyTree):
+        params = data['params']
+        key = decode_key(data['key'])
+        return cls(params, key)
 
     def predicts(self, board):
         return mlp_predict(self.params, board)

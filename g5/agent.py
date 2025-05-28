@@ -1,18 +1,15 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
-from flax.serialization import (                                  # type: ignore
-    msgpack_serialize as pack_pytree,
-    msgpack_restore as unpack_pytree,
-)
 from abc import ABC, abstractmethod
 from enum import Flag
-from .state import unravel, affordance, transitions
 from .hint import Stone, Board, Coord, Coords, Action, PyTree
+from .state import unravel, affordance, transitions
 from .value import Value
 from .policy import Policy, critic
 from .reward import Reward
 from .optim import Schedule, ConstantSchedule
+from .codec import encode_key, decode_key, pack_pytree, unpack_pytree
 
 
 class Mode(Flag):
@@ -55,9 +52,17 @@ class Agent(ABC):
         pass
 
     @classmethod
-    @abstractmethod
     def decode(cls, data: PyTree):
-        pass
+        genre = data.pop('class')
+        match genre:
+            case 'Amateur':
+                return Amateur.decode(data)
+            case 'ValueLearner':
+                return ValueLearner.decode(data)
+            case 'PolicyLearner':
+                return PolicyLearner.decode(data)
+            case _:
+                raise ValueError(f"unknown agent class: {genre}")
 
     def save(self, file):
         data = self.encode()
@@ -93,16 +98,17 @@ class Amateur(Agent):
 
     def encode(self) -> PyTree:
         return {
+            'class': self.__class__.__name__,
             'stone':  self.stone,
             'reward': self.reward.encode(),
-            'key':    jax.random.key_data(self._key),
+            'key':    encode_key(self._key),
         }
 
     @classmethod
     def decode(cls, data: PyTree):
         stone  = data['stone']
         reward = Reward.decode(data['reward'])
-        key = jax.random.wrap_key_data(data['key'])
+        key = decode_key(data['key'])
         return cls(stone, reward, key)
 
 
@@ -156,11 +162,12 @@ class ValueLearner(Learner):
 
     def encode(self) -> PyTree:
         return {
+            'class': self.__class__.__name__,
             'stone':   self.stone,
             'reward':  self.reward.encode(),
             'value':   self.value.encode(),
             'epsilon': self.epsilon.encode(),
-            'key':     jax.random.key_data(self._key),
+            'key':     encode_key(self._key),
         }
 
     @classmethod
@@ -169,7 +176,7 @@ class ValueLearner(Learner):
         reward = Reward.decode(data['reward'])
         value  = Value.decode(data['value'])
         epsilon = Schedule.decode(data['epsilon'])
-        key = jax.random.wrap_key_data(data['key'])
+        key = decode_key(data['key'])
         return cls(stone, reward, value, epsilon, key)
 
     def top(self, board: Board, coords: Coords) -> Coord:
@@ -222,12 +229,13 @@ class PolicyLearner(Learner):
 
     def encode(self) -> PyTree:
         return {
+            'class': self.__class__.__name__,
             'stone':   self.stone,
             'reward':  self.reward.encode(),
             'value':   self.value.encode(),
             'policy':  self.policy.encode(),
             'epsilon': self.epsilon.encode(),
-            'key':     jax.random.key_data(self._key),
+            'key':     encode_key(self._key),
         }
 
     @classmethod
@@ -237,7 +245,7 @@ class PolicyLearner(Learner):
         value  = Value.decode(data['value'])
         policy = Policy.decode(data['policy'])
         epsilon = Schedule.decode(data['epsilon'])
-        key = jax.random.wrap_key_data(data['key'])
+        key = decode_key(data['key'])
         return cls(stone, reward, value, policy, epsilon, key)
 
     def act(self, board: Board) -> Action:
