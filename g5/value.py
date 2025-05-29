@@ -85,7 +85,7 @@ def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
         merits_2,
     )
     advantages = advantage(values_0, rewards, jax.lax.stop_gradient(values_2))
-    return jnp.sum(advantages**2)
+    return jnp.mean(advantages**2)
 
 
 @jax.jit

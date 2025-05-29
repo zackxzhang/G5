@@ -92,7 +92,7 @@ def mlp_loss(params, boards, coords, advantages):
     n = len(coords)
     logpbs = mlp_predict_batch(params, boards)
     logpas = logpbs[jnp.arange(n), coords[:, 0], coords[:, 1]][:, None]
-    return jnp.sum(advantages * logpas)
+    return jnp.mean(advantages * logpas)
 
 
 @jax.jit
