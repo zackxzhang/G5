@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from .hint import Board, Array, Layers, PyTree, Key
 from .network import (
-    step, relu, flatten,
+    step, tanh, flatten,
     encode_layers, decode_layers,
     InputLayer, Conv2DLayer, MaxPoolLayer, FlattenLayer, DenseLayer,
     mlp_init_network_params, mlp_forward, mlp_forward_batch,
@@ -65,12 +65,12 @@ class Value(ABC):
 
 @jax.jit
 def mlp_predict(params, board):
-    return mlp_forward(params, board.ravel())
+    return tanh(mlp_forward(params, board.ravel()))
 
 
 @jax.jit
 def mlp_predict_batch(params, boards):
-    return mlp_forward_batch(params, flatten(boards))
+    return tanh(mlp_forward_batch(params, flatten(boards)))
 
 
 def advantage(values_0, rewards, values_2, gamma=1.0):
@@ -98,6 +98,7 @@ def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
 
 
 mlp_default_sizes = [225, 900, 3600, 900, 225, 1]
+# mlp_default_sizes = [225, 1800, 3600, 1800, 900, 450, 225, 1]
 
 
 class MLPValue(Value):
@@ -114,7 +115,7 @@ class MLPValue(Value):
             mlp_init_network_params(mlp_default_sizes, self.key)
         )
 
-    def encode(self):
+    def encode(self) -> PyTree:
         return {
             'class':  self.__class__.__name__,
             'params': self.params,

@@ -3,7 +3,7 @@ import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from .hint import Board, Coord, PyTree, Key
-from .network import relu, logsumexp, mlp_init_network_params
+from .network import logsumexp, mlp_init_network_params, mlp_forward
 from .value import advantage
 from .codec import encode_key, decode_key
 
@@ -60,12 +60,7 @@ class Policy(ABC):
 
 @jax.jit
 def mlp_predict(params, board):
-    x = board.ravel()
-    for W, b in params[:-1]:
-        z = W @ x + b
-        x = relu(z)
-    W, b = params[-1]
-    logits = W @ x + b
+    logits = mlp_forward(params, board.ravel())
     logpbs = logits - logsumexp(logits)
     return logpbs.reshape((15, 15))
 
@@ -104,19 +99,27 @@ def mlp_step(params, boards, coords, advantages, alpha=1e-2):
     ]
 
 
+mlp_default_sizes = [225, 900, 3600, 900, 225]
+# mlp_default_sizes = [225, 1800, 3600, 1800, 900, 450, 225]
+
+
 class MLPPolicy(Policy):
 
-    def __init__(self, params: PyTree | None = None, key=jax.random.key(6)):
+    def __init__(
+        self,
+        params: PyTree | None = None,
+        key: Key = jax.random.key(6),
+    ):
         super().__init__()
         self._key = key
         self.params = (
             params if params else
-            mlp_init_network_params([225, 900, 3600, 900, 225], self.key)
+            mlp_init_network_params(mlp_default_sizes, self.key)
         )
 
     def encode(self) -> PyTree:
         return {
-            'class': self.__class__.__name__,
+            'class':  self.__class__.__name__,
             'params': self.params,
             'key':    encode_key(self._key),
         }

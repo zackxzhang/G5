@@ -1,8 +1,9 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import numpy as np                                                # type: ignore
-from jax.scipy.special import logsumexp                           # type: ignore
 from jax.nn import relu, sigmoid                                  # type: ignore
+from jax.numpy import tanh                                        # type: ignore
+from jax.scipy.special import logsumexp                           # type: ignore
 from functools import partial
 from .hint import Layer, Layers, Key, PyTree
 from .codec import register, encode_layers, decode_layers
