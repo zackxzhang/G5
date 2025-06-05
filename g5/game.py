@@ -1,10 +1,11 @@
-import multiprocessing as mp
+import threading
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
 from collections import defaultdict
 from collections.abc import Iterable
+from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from itertools import repeat
 from pathlib import Path
 from .hint import Stone, Board, Coord, Action
@@ -30,6 +31,10 @@ class Rollout:
 
     def __len__(self):
         return len(self.rewards)
+
+    def __iter__(self):
+        for board in self.boards:
+            yield board
 
 
 columns = [
@@ -139,13 +144,15 @@ class Score:
 
     def __init__(self):
         self.wins = [0, 0, 0]
+        self.lock = threading.Lock()
 
     @property
     def n(self) -> int:
         return sum(self.wins)
 
     def __call__(self, winner: Stone):
-        self.wins[winner] += 1
+        with self.lock:
+            self.wins[winner] += 1
 
     def __str__(self):
         return (
@@ -162,17 +169,17 @@ class Simulator:
         self,
         agents: tuple[Agent, Agent],
         folder: Path = Path('.'),
-        device: str = 'cuda',
-        n_procs: int = 1,
+        n_processes: int = 1,
+        n_threads: int = 1,
     ):
         self.score  = Score()
         self.agents = agents
         self.folder = folder
-        self.device = device
-        self.n_procs = n_procs
+        self.n_processes = n_processes
+        self.n_threads = n_threads
 
-    def play(self):
-        game = Game(self.agents)
+    def play(self, agents):
+        game = Game(agents)
         while True:
             agent  = game.agent
             action = agent.act(game.board)
@@ -189,12 +196,11 @@ class Simulator:
         n_games: int,
     ) -> tuple[Replay, Replay]:
         key = jax.random.key(((stage + 3) * (division + 7) + 1) * 11 + 5)
-        key0, key1 = jax.random.split(key)
-        self.agents[0]._key = key0
-        self.agents[1]._key = key1
+        p1, p2 = self.agents[0].clone(), self.agents[1].clone()
+        p1._key, p2._key = jax.random.split(key)
         replays_p1, replays_p2 = list(), list()
         for _ in range(n_games):
-            replay_p1, replay_p2 = memoize(self.play())
+            replay_p1, replay_p2 = memoize(self.play((p1, p2)))
             replays_p1.append(replay_p1)
             replays_p2.append(replay_p2)
         return collate(replays_p1), collate(replays_p2)
@@ -205,14 +211,21 @@ class Simulator:
         n_games: int,
         save: bool = False,
     ) -> tuple[Replay, Replay]:
-        if self.device == 'cpu' and self.n_procs > 1:
-            k = self.n_procs
+        executor: Executor
+        replays: Iterable[tuple[Replay, Replay]]
+        if self.n_processes > 1 or self.n_threads > 1:
+            if self.n_processes > 1:
+                k = self.n_processes
+                executor = ProcessPoolExecutor(max_workers=k)
+            else:
+                k = self.n_threads
+                executor = ThreadPoolExecutor(max_workers=k)
             n = n_games // k
             m = n_games - (k - 1) * n
-            with mp.Pool(k) as pool:
-                replays: list[tuple[Replay, Replay]] = pool.starmap(
+            with executor:
+                replays = executor.map(
                     self.work,
-                    zip(repeat(stage), range(k), [n] * (k-1) + [m]),
+                    repeat(stage), range(k), [n] * (k-1) + [m],
                 )
             replays_p1, replays_p2 = list(zip(*replays))
             replay_p1 = collate(replays_p1)

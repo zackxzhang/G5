@@ -32,6 +32,10 @@ class Agent(ABC):
     def eval(self):
         pass
 
+    @abstractmethod
+    def clone(self):
+        pass
+
     @property
     def key(self):
         self._key, subkey = jax.random.split(self._key)
@@ -91,6 +95,9 @@ class Amateur(Agent):
     def eval(self):
         return self
 
+    def clone(self):
+        return self
+
     def act(self, board: Board) -> Action:
         coords = affordance(board)
         coord = self.choice(coords)
@@ -98,7 +105,7 @@ class Amateur(Agent):
 
     def encode(self) -> PyTree:
         return {
-            'class': self.__class__.__name__,
+            'class':  self.__class__.__name__,
             'stone':  self.stone,
             'reward': self.reward.encode(),
             'key':    encode_key(self._key),
@@ -160,9 +167,17 @@ class ValueLearner(Learner):
         self.value.eval()
         return super().eval()
 
+    def clone(self):
+        return ValueLearner(
+            stone=self.stone,
+            reward=type(self.reward),
+            value=self.value,
+            epsilon=Schedule.decode(self.epsilon.encode()),
+        )
+
     def encode(self) -> PyTree:
         return {
-            'class': self.__class__.__name__,
+            'class':   self.__class__.__name__,
             'stone':   self.stone,
             'reward':  self.reward.encode(),
             'value':   self.value.encode(),
@@ -227,9 +242,18 @@ class PolicyLearner(Learner):
         self.policy.eval()
         return super().eval()
 
+    def clone(self):
+        return PolicyLearner(
+            stone=self.stone,
+            reward=type(self.reward),
+            value=self.value,
+            policy=self.policy,
+            epsilon=Schedule.decode(self.epsilon.encode()),
+        )
+
     def encode(self) -> PyTree:
         return {
-            'class': self.__class__.__name__,
+            'class':   self.__class__.__name__,
             'stone':   self.stone,
             'reward':  self.reward.encode(),
             'value':   self.value.encode(),
