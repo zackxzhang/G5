@@ -46,15 +46,16 @@ columns = [
 class Replay:
 
     def __init__(self, data: dict | None = None):
-        self.data = data if data else {col: jnp.array([]) for col in columns}
+        self.data = data
 
     def __len__(self):
-        return len(self.data['rewards'])
+        return 0 if self.data is None else len(self.data['rewards'])
 
     def __getitem__(self, key):
-        return self.data[key]
+        return None if self.data is None else self.data[key]
 
     def save(self, path: Path):
+        assert self.data is not None
         np.savez(path, **self.data)  # type: ignore
 
     @classmethod
@@ -93,9 +94,10 @@ def collate(replays: Iterable[Replay]) -> Replay:
     memo = defaultdict(list)
     for col in columns:
         for replay in replays:
-            memo[col].append(replay[col])
+            if replay.data is not None:
+                memo[col].append(replay[col])
     # 3. concatentate
-    data = {k: jnp.vstack(v) for k, v in memo.items()}
+    data = {k: jnp.vstack(v) for k, v in memo.items()} if memo else None
     return Replay(data)
 
 
