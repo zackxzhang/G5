@@ -6,6 +6,7 @@ from jax import Array                                             # type: ignore
 from collections import defaultdict
 from collections.abc import Iterable
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
+from functools import partial
 from itertools import repeat
 from pathlib import Path
 from .hint import Stone, Board, Coord, Action
@@ -50,17 +51,17 @@ columns = [
 
 class Replay:
 
-    def __init__(self, data: dict | None = None):
+    def __init__(self, data: dict = dict()):
         self.data = data
 
     def __len__(self):
-        return 0 if self.data is None else len(self.data['rewards'])
+        return 0 if not self.data else len(self.data['rewards'])
 
     def __getitem__(self, key):
-        return None if self.data is None else self.data[key]
+        return None if not self.data else self.data[key]
 
     def save(self, path: Path):
-        assert self.data is not None
+        assert self.data
         np.savez(path, **self.data)  # type: ignore
 
     @classmethod
@@ -99,10 +100,10 @@ def collate(replays: Iterable[Replay]) -> Replay:
     memo = defaultdict(list)
     for col in columns:
         for replay in replays:
-            if replay.data is not None:
+            if replay:
                 memo[col].append(replay[col])
     # 3. concatentate
-    data = {k: jnp.vstack(v) for k, v in memo.items()} if memo else None
+    data = {k: jnp.vstack(v) for k, v in memo.items()} if memo else dict()
     return Replay(data)
 
 
@@ -167,13 +168,11 @@ class Simulator:
 
     def __init__(
         self,
-        agents: tuple[Agent, Agent],
         folder: Path = Path('.'),
         n_processes: int = 1,
         n_threads: int = 1,
     ):
         self.score  = Score()
-        self.agents = agents
         self.folder = folder
         self.n_processes = n_processes
         self.n_threads = n_threads
@@ -191,12 +190,13 @@ class Simulator:
 
     def work(
         self,
+        agents: tuple[Agent, Agent],
         stage: int,
         division: int,
         n_games: int,
     ) -> tuple[Replay, Replay]:
         key = jax.random.key(((stage + 3) * (division + 7) + 1) * 11 + 5)
-        p1, p2 = self.agents[0].clone(), self.agents[1].clone()
+        p1, p2 = agents[0].clone(), agents[1].clone()
         p1._key, p2._key = jax.random.split(key)
         replays_p1, replays_p2 = list(), list()
         for _ in range(n_games):
@@ -207,6 +207,7 @@ class Simulator:
 
     def __call__(
         self,
+        agents: tuple[Agent, Agent],
         stage: int,
         n_games: int,
         save: bool = False,
@@ -224,14 +225,14 @@ class Simulator:
             m = n_games - (k - 1) * n
             with executor:
                 replays = executor.map(
-                    self.work,
+                    partial(self.work, agents),
                     repeat(stage), range(k), [n] * (k-1) + [m],
                 )
             replays_p1, replays_p2 = list(zip(*replays))
             replay_p1 = collate(replays_p1)
             replay_p2 = collate(replays_p2)
         else:
-            replay_p1, replay_p2 = self.work(stage, 0, n_games)
+            replay_p1, replay_p2 = self.work(agents, stage, 0, n_games)
         if save:
             replay_p1.save(self.folder / f'stage-{stage}_p1.npz')
             replay_p2.save(self.folder / f'stage-{stage}_p2.npz')

@@ -3,6 +3,7 @@ import jax.numpy as jnp                                           # type: ignore
 from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
+from typing import Self
 from .hint import Stone, Board, Coord, Coords, Action, PyTree
 from .state import unravel, affordance, transitions
 from .value import Value
@@ -29,11 +30,11 @@ class Agent(ABC):
         return self.reward(winner)
 
     @abstractmethod
-    def eval(self):
+    def eval(self) -> Self:
         pass
 
     @abstractmethod
-    def clone(self):
+    def clone(self) -> Self:
         pass
 
     @property
@@ -96,7 +97,10 @@ class Amateur(Agent):
         return self
 
     def clone(self):
-        return self
+        return Amateur(
+            stone=self.stone,
+            reward=type(self.reward),
+        )
 
     def act(self, board: Board) -> Action:
         coords = affordance(board)
