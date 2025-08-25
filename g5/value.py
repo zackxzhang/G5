@@ -189,7 +189,7 @@ cnn_default_layers: Layers = (
         shape=(None, 1, 15, 15),
     ),
     Conv2DLayer(
-        channels=64,
+        channels=512,
         kernel_size=(5, 5),
         strides=(1, 1),
         padding='SAME',
@@ -201,7 +201,7 @@ cnn_default_layers: Layers = (
         padding='VALID',
     ),
     Conv2DLayer(
-        channels=256,
+        channels=1024,
         kernel_size=(5, 5),
         strides=(1, 1),
         padding='VALID',
@@ -209,11 +209,11 @@ cnn_default_layers: Layers = (
     ),
     FlattenLayer(),
     DenseLayer(
-        units=512,
+        units=2048,
         activation='relu',
     ),
     DenseLayer(
-        units=128,
+        units=512,
         activation='relu',
     ),
     DenseLayer(

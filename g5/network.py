@@ -192,6 +192,10 @@ def cnn_forward_batch(params, layers, inputs):
                 x = conv2d(x, param['W'], param['b'], st, pd)
                 if act == 'relu':
                     x = relu(x)
+                elif act == 'sigmoid':
+                    x = sigmoid(x)
+                elif act == 'tanh':
+                    x = tanh(x)
                 else:
                     raise ValueError(f"unknown activation: {act}")
             case MaxPoolLayer(pool_size=ps, strides=st, padding=pd):
@@ -204,6 +208,8 @@ def cnn_forward_batch(params, layers, inputs):
                     x = relu(x)
                 elif act == 'sigmoid':
                     x = sigmoid(x)
+                elif act == 'tanh':
+                    x = tanh(x)
                 else:
                     raise ValueError(f"unknown activation: {act}")
             case _:
