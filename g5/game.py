@@ -166,14 +166,7 @@ class Score:
 
 class Simulator:
 
-    def __init__(
-        self,
-        folder: Path = Path('.'),
-        n_processes: int = 1,
-        n_threads: int = 1,
-    ):
-        self.score  = Score()
-        self.folder = folder
+    def __init__(self, n_processes: int = 1, n_threads: int = 1):
         self.n_processes = n_processes
         self.n_threads = n_threads
 
@@ -184,9 +177,8 @@ class Simulator:
             action = agent.act(game.board)
             winner = game.evo(action)
             if winner in (-1, 0, +1):
-                self.score(winner)
                 break
-        return game.rollout
+        return winner, game.rollout
 
     def work(
         self,
@@ -200,7 +192,8 @@ class Simulator:
         p1._key, p2._key = jax.random.split(key)
         replays_p1, replays_p2 = list(), list()
         for _ in range(n_games):
-            replay_p1, replay_p2 = memoize(self.play((p1, p2)))
+            _, rollout = self.play((p1, p2))
+            replay_p1, replay_p2 = memoize(rollout)
             replays_p1.append(replay_p1)
             replays_p2.append(replay_p2)
         return collate(replays_p1), collate(replays_p2)
@@ -233,9 +226,6 @@ class Simulator:
             replay_p2 = collate(replays_p2)
         else:
             replay_p1, replay_p2 = self.work(agents, stage, 0, n_games)
-        if save:
-            replay_p1.save(self.folder / f'stage-{stage}_p1.npz')
-            replay_p2.save(self.folder / f'stage-{stage}_p2.npz')
         return replay_p1, replay_p2
 
 
