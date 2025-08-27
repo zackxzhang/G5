@@ -1,4 +1,5 @@
 import threading
+import multiprocessing as mp
 import numpy as np                                                # type: ignore
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
@@ -203,14 +204,16 @@ class Simulator:
         agents: tuple[Agent, Agent],
         stage: int,
         n_games: int,
-        save: bool = False,
     ) -> tuple[Replay, Replay]:
         executor: Executor
         replays: Iterable[tuple[Replay, Replay]]
         if self.n_processes > 1 or self.n_threads > 1:
             if self.n_processes > 1:
                 k = self.n_processes
-                executor = ProcessPoolExecutor(max_workers=k)
+                executor = ProcessPoolExecutor(
+                    max_workers=k,
+                    mp_context=mp.get_context('spawn'),
+                )
             else:
                 k = self.n_threads
                 executor = ThreadPoolExecutor(max_workers=k)
