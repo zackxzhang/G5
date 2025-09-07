@@ -230,3 +230,11 @@ def step(params, grads, alpha):
         params,
         grads,
     )
+
+
+def move(params_p, params, beta):
+    return jax.tree.map(
+        lambda p, q: beta * p + (1-beta) * q,
+        params_p,
+        params,
+    )

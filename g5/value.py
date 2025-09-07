@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from .hint import Board, Array, Layers, PyTree, Key
 from .network import (
-    step, tanh, flatten,
+    step, move, tanh, flatten,
     encode_layers, decode_layers,
     InputLayer, Conv2DLayer, MaxPoolLayer, FlattenLayer, DenseLayer,
     mlp_init_network_params, mlp_forward, mlp_forward_batch,
@@ -73,15 +73,15 @@ def mlp_predict_batch(params, boards):
     return tanh(mlp_forward_batch(params, flatten(boards)))
 
 
-def advantage(values_0, rewards, values_2, gamma=1.0):
+def advantage(values_0, rewards, values_2, gamma: float = 1.0):
     return rewards + gamma * values_2 - values_0
 
 
-def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
+def mlp_loss(params, params_p, boards_0, rewards, boards_2, merits_2):
     values_0 = mlp_predict_batch(params, boards_0)
     values_2 = jnp.where(
         jnp.isnan(merits_2),
-        mlp_predict_batch(params, boards_2),
+        mlp_predict_batch(params_p, boards_2),
         merits_2,
     )
     advantages = advantage(values_0, rewards, jax.lax.stop_gradient(values_2))
@@ -89,8 +89,10 @@ def mlp_loss(params, boards_0, rewards, boards_2, merits_2):
 
 
 @jax.jit
-def mlp_step(params, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
-    grads = jax.grad(mlp_loss)(params, boards_0, rewards, boards_2, merits_2)
+def mlp_step(params, params_p, boards_0, rewards, boards_2, merits_2, alpha):
+    grads = jax.grad(mlp_loss)(
+        params, params_p, boards_0, rewards, boards_2, merits_2
+    )
     return [
         [W - alpha * dW, b - alpha * db]
         for (W, b), (dW, db) in zip(params, grads)
@@ -114,6 +116,7 @@ class MLPValue(Value):
             params if params else
             mlp_init_network_params(mlp_default_sizes, self.key)
         )
+        self.params_p = self.params
 
     def encode(self) -> PyTree:
         return {
@@ -138,11 +141,14 @@ class MLPValue(Value):
         if self.learnable:
             self.params = mlp_step(
                 self.params,
+                self.params_p,
                 boards_0,
                 rewards,
                 boards_2,
                 merits_2,
+                alpha=1e-3,
             )
+            self.params_p = move(self.params_p, self.params, beta=0.999)
         else:
             pass
 
@@ -160,11 +166,11 @@ def cnn_predict_batch(params, layers, boards):
 
 
 @partial(jax.jit, static_argnames=('layers',))
-def cnn_loss(params, layers, boards_0, rewards, boards_2, merits_2):
+def cnn_loss(params, params_p, layers, boards_0, rewards, boards_2, merits_2):
     values_0 = cnn_predict_batch(params, layers, boards_0)
     values_2 = jnp.where(
         jnp.isnan(merits_2),
-        cnn_predict_batch(params, layers, boards_2),
+        cnn_predict_batch(params_p, layers, boards_2),
         merits_2,
     )
     advantages = advantage(values_0, rewards, jax.lax.stop_gradient(values_2))
@@ -172,9 +178,12 @@ def cnn_loss(params, layers, boards_0, rewards, boards_2, merits_2):
 
 
 @partial(jax.jit, static_argnames=('layers',))
-def cnn_step(params, layers, boards_0, rewards, boards_2, merits_2, alpha=1e-2):
+def cnn_step(
+    params, params_p, layers, boards_0, rewards, boards_2, merits_2, alpha,
+):
     grads = jax.grad(cnn_loss)(
         params,
+        params_p,
         layers,
         boards_0,
         rewards,
@@ -241,6 +250,7 @@ class CNNValue(Value):
             params if params else
             cnn_init_network_params(self.layers, self.key)
         )
+        self.params_p = self.params
 
     def encode(self):
         return {
@@ -267,12 +277,15 @@ class CNNValue(Value):
         if self.learnable:
             self.params = cnn_step(
                 self.params,
+                self.params_p,
                 self.layers,
                 boards_0,
                 rewards,
                 boards_2,
                 merits_2,
+                alpha=1e-3,
             )
+            self.params_p = move(self.params_p, self.params, beta=0.999)
         else:
             pass
 
