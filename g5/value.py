@@ -33,8 +33,9 @@ class Value(ABC):
     def predict(self, boards) -> Array:
         pass
 
+    @abstractmethod
     def __call__(self, boards):
-        return self.predict(boards)
+        pass
 
     @abstractmethod
     def update(self, boards_0, rewards, boards_1, merits_2):
@@ -136,6 +137,9 @@ class MLPValue(Value):
 
     def predict(self, boards):
         return mlp_predict_batch(self.params, boards)
+
+    def __call__(self, boards):
+        return mlp_predict_batch(self.params_p, boards)
 
     def update(self, boards_0, rewards, boards_2, merits_2):
         if self.learnable:
@@ -272,6 +276,9 @@ class CNNValue(Value):
 
     def predict(self, boards):
         return cnn_predict_batch(self.params, self.layers, boards)
+
+    def __call__(self, boards):
+        return cnn_predict_batch(self.params_p, self.layers, boards)
 
     def update(self, boards_0, rewards, boards_2, merits_2):
         if self.learnable:
