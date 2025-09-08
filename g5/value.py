@@ -198,42 +198,42 @@ def cnn_step(
 
 
 cnn_default_layers: Layers = (
-    InputLayer(
+    InputLayer(                                    # type: ignore[call-overload]
         shape=(None, 1, 15, 15),
     ),
-    Conv2DLayer(
+    Conv2DLayer(                                   # type: ignore[call-overload]
         channels=512,
         kernel_size=(5, 5),
         strides=(1, 1),
         padding='SAME',
         activation='relu',
     ),
-    MaxPoolLayer(
+    MaxPoolLayer(                                  # type: ignore[call-overload]
         pool_size=(3, 3),
         strides=(3, 3),
         padding='VALID',
     ),
-    Conv2DLayer(
+    Conv2DLayer(                                   # type: ignore[call-overload]
         channels=1024,
         kernel_size=(5, 5),
         strides=(1, 1),
         padding='VALID',
         activation='relu',
     ),
-    FlattenLayer(),
-    DenseLayer(
+    FlattenLayer(),                                # type: ignore[call-overload]
+    DenseLayer(                                    # type: ignore[call-overload]
         units=2048,
         activation='relu',
     ),
-    DenseLayer(
+    DenseLayer(                                    # type: ignore[call-overload]
         units=512,
         activation='relu',
     ),
-    DenseLayer(
+    DenseLayer(                                    # type: ignore[call-overload]
         units=32,
         activation='relu',
     ),
-    DenseLayer(
+    DenseLayer(                                    # type: ignore[call-overload]
         units=1,
         activation='sigmoid',
     ),

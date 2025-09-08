@@ -14,5 +14,5 @@ PyTree: TypeAlias = Any
 Key:    TypeAlias = Array
 
 
-Layer: TypeAlias  = NamedTuple
+Layer:  TypeAlias = NamedTuple
 Layers: TypeAlias = tuple[Layer, ...]
