@@ -165,39 +165,58 @@ class Score:
         )
 
 
+def play(agents: tuple[Agent, Agent]) -> tuple[Stone, Rollout] :
+    game = Game(agents)
+    while True:
+        agent  = game.agent
+        action = agent.act(game.board)
+        winner = game.evo(action)
+        if winner in (-1, 0, +1):
+            break
+    return winner, game.rollout
+
+
+def work(
+    agents: tuple[Agent, Agent],
+    stage: int,
+    division: int,
+    n_games: int,
+) -> tuple[Replay, Replay]:
+    key = jax.random.key(((stage + 3) * (division + 7) + 1) * 11 + 5)
+    p1, p2 = agents[0].clone(), agents[1].clone()
+    p1._key, p2._key = jax.random.split(key)
+    replays_p1, replays_p2 = list(), list()
+    for _ in range(n_games):
+        _, rollout = play((p1, p2))
+        replay_p1, replay_p2 = memoize(rollout)
+        replays_p1.append(replay_p1)
+        replays_p2.append(replay_p2)
+    return collate(replays_p1), collate(replays_p2)
+
+
 class Simulator:
 
     def __init__(self, n_processes: int = 1, n_threads: int = 1):
         self.n_processes = n_processes
         self.n_threads = n_threads
+        self.executor: Executor | None
+        if self.n_processes > 1 or self.n_threads > 1:
+            if self.n_processes > 1:
+                self.k = self.n_processes
+                self.executor = ProcessPoolExecutor(
+                    max_workers=self.k,
+                    mp_context=mp.get_context('spawn'),
+                )
+            else:
+                self.k = self.n_threads
+                self.executor = ThreadPoolExecutor(max_workers=self.k)
+        else:
+            self.k = 1
+            self.executor = None
 
-    def play(self, agents):
-        game = Game(agents)
-        while True:
-            agent  = game.agent
-            action = agent.act(game.board)
-            winner = game.evo(action)
-            if winner in (-1, 0, +1):
-                break
-        return winner, game.rollout
-
-    def work(
-        self,
-        agents: tuple[Agent, Agent],
-        stage: int,
-        division: int,
-        n_games: int,
-    ) -> tuple[Replay, Replay]:
-        key = jax.random.key(((stage + 3) * (division + 7) + 1) * 11 + 5)
-        p1, p2 = agents[0].clone(), agents[1].clone()
-        p1._key, p2._key = jax.random.split(key)
-        replays_p1, replays_p2 = list(), list()
-        for _ in range(n_games):
-            _, rollout = self.play((p1, p2))
-            replay_p1, replay_p2 = memoize(rollout)
-            replays_p1.append(replay_p1)
-            replays_p2.append(replay_p2)
-        return collate(replays_p1), collate(replays_p2)
+    def __del__(self):
+        if self.executor:
+            self.executor.shutdown()
 
     def __call__(
         self,
@@ -205,30 +224,18 @@ class Simulator:
         stage: int,
         n_games: int,
     ) -> tuple[Replay, Replay]:
-        executor: Executor
-        replays: Iterable[tuple[Replay, Replay]]
-        if self.n_processes > 1 or self.n_threads > 1:
-            if self.n_processes > 1:
-                k = self.n_processes
-                executor = ProcessPoolExecutor(
-                    max_workers=k,
-                    mp_context=mp.get_context('spawn'),
-                )
-            else:
-                k = self.n_threads
-                executor = ThreadPoolExecutor(max_workers=k)
-            n = n_games // k
-            m = n_games - (k - 1) * n
-            with executor:
-                replays = executor.map(
-                    partial(self.work, agents),
-                    repeat(stage), range(k), [n] * (k-1) + [m],
-                )
+        if self.executor:
+            n = n_games // self.k
+            m = n_games - (self.k - 1) * n
+            replays = self.executor.map(
+                partial(work, agents),
+                repeat(stage), range(self.k), [n] * (self.k-1) + [m],
+            )
             replays_p1, replays_p2 = list(zip(*replays))
             replay_p1 = collate(replays_p1)
             replay_p2 = collate(replays_p2)
         else:
-            replay_p1, replay_p2 = self.work(agents, stage, 0, n_games)
+            replay_p1, replay_p2 = work(agents, stage, 0, n_games)
         return replay_p1, replay_p2
 
 
