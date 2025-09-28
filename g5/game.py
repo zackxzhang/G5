@@ -86,11 +86,11 @@ def memoize(rollout: Rollout) -> tuple[Replay, Replay]:
     p = {
         'boards_0': jnp.stack([onset] + rollout.boards[:-2]),
         'boards_1': jnp.stack(rollout.boards[:-1]),
-        'coords': jnp.stack(rollout.coords),
-        'rewards': jnp.stack(rollout.rewards)[:, None],
+        'coords':   jnp.stack(rollout.coords),
+        'rewards':  jnp.stack(rollout.rewards)[:, None],
         'boards_2': jnp.stack(rollout.boards[1:]),
         'merits_2': jnp.stack([jnp.nan] * (n-2) + [0.] * 2)[:, None],
-        'edges': jnp.stack([jnp.nan] * (n-1) + [0.] * 1)[:, None],
+        'edges':    jnp.stack([jnp.nan] * (n-1) + [0.] * 1)[:, None],
     }
     # 2. split
     p1, p2 = split(p)
@@ -199,7 +199,7 @@ class Simulator:
     def __init__(self, n_processes: int = 1, n_threads: int = 1):
         self.n_processes = n_processes
         self.n_threads = n_threads
-        self.executor: Executor | None
+        self.executor: Executor | None = None
         if self.n_processes > 1 or self.n_threads > 1:
             if self.n_processes > 1:
                 self.k = self.n_processes

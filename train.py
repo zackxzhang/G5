@@ -60,11 +60,11 @@ p2 = ValueLearner(
 if __name__ == '__main__':
 
     try:
-        task = f"Training {n_stages} stages x {n_games} games x {n_epochs} epochs"
+        task = f"training {n_stages} stages, {n_games} games, {n_epochs} epochs"
+        simulator = Simulator(n_processes=2)
         with Timer(task):
             for stage in range(1, n_stages+1):
                 print(f"Stage {stage}")
-                simulator = Simulator(n_processes=4)
                 replay_p1, replay_p2 = simulator((p1, p2), stage, n_games)
                 replay_p1.save(folder / f'stage-{stage}_p1.npz')
                 replay_p2.save(folder / f'stage-{stage}_p2.npz')
@@ -80,10 +80,9 @@ if __name__ == '__main__':
                     p1.save(folder / f'p1.stage{stage}.msgpack')
                     p2.save(folder / f'p2.stage{stage}.msgpack')
     except Exception as exc:
-        print("Training interrupted:")
-        print(exc)
+        raise ValueError("training interrupted ...") from exc
     else:
-        print("Training finished successfully.")
+        print("training finished successfully.")
     finally:
         p1.save(folder / 'p1.msgpack')
         p2.save(folder / 'p2.msgpack')

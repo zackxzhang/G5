@@ -34,7 +34,7 @@ class Value(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, boards):
+    def __call__(self, boards) -> Array:
         pass
 
     @abstractmethod
