@@ -94,10 +94,7 @@ def mlp_step(params, params_p, boards_0, rewards, boards_2, merits_2, alpha):
     grads = jax.grad(mlp_loss)(
         params, params_p, boards_0, rewards, boards_2, merits_2
     )
-    return [
-        [W - alpha * dW, b - alpha * db]
-        for (W, b), (dW, db) in zip(params, grads)
-    ]
+    return step(params, grads, alpha)
 
 
 mlp_default_sizes = [225, 900, 3600, 900, 225, 1]

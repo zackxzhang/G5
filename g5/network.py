@@ -224,17 +224,17 @@ def cnn_forward(params, layers, intake):
     return jnp.squeeze(outputs, axis=0)
 
 
+@jax.jit
 def step(params, grads, alpha):
     return jax.tree.map(
         lambda param, grad: param - alpha * grad,
-        params,
-        grads,
+        params, grads
     )
 
 
+@jax.jit
 def move(params_p, params, beta):
     return jax.tree.map(
-        lambda p, q: beta * p + (1-beta) * q,
-        params_p,
-        params,
+        lambda p, q: beta * p + (1 - beta) * q,
+        params_p, params
     )
