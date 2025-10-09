@@ -1,7 +1,8 @@
 import jax                                                        # type: ignore
 import jax.numpy as jnp                                           # type: ignore
 import jax.scipy as jsp                                           # type: ignore
-from .hint import Stone, Board, Coord, Coords
+from flax.struct import dataclass, field                          # type: ignore
+from .hint import Stone, Board, Point, Coord, Coords
 
 
 onset = jnp.zeros((15, 15), dtype=int)
@@ -24,17 +25,36 @@ def stringify(board: Board) -> str:
     return '\n'.join(''.join(map(_stringify, row)) for row in board)
 
 
-def affordance(board: Board) -> Coords:
-    return jnp.argwhere(board == 0)
+def ravel(coord: Coord) -> Point:
+    x, y = coord
+    return x * 15 + y
 
 
-def transition(board: Board, stone: Stone, coord: Coord) -> Board:
-    return board.at[coord[0], coord[1]].set(stone)
+def unravel(point: Point) -> Coord:
+    x, y = divmod(point, 15)
+    return jnp.array([x, y])
 
 
-def unravel(index: int) -> Coord:
-    i, j = divmod(index, 15)
-    return jnp.array([i, j])
+@dataclass
+class Affordance:
+    points: jnp.ndarray = field(default_factory=lambda: jnp.arange(225))
+    locator: jnp.ndarray = field(default_factory=lambda: jnp.arange(225))
+    n: int = 225
+
+
+@jax.jit
+def remove(aff: Affordance, point: Point) -> Affordance:
+    loc = aff.locator[point]
+    last = aff.points[aff.n - 1]
+    points = aff.points.at[loc].set(last)
+    locator = aff.locator.at[last].set(loc).at[point].set(-1)
+    return Affordance(points, locator, aff.n - 1)
+
+
+@jax.jit
+def transition(board: Board, stone: Stone, point: Point) -> Board:
+    x, y = jnp.divmod(point, 15)
+    return board.at[x, y].set(stone)
 
 
 transitions = jax.jit(jax.vmap(transition, in_axes=(None, None, 0)))

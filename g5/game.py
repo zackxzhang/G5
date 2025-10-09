@@ -10,8 +10,8 @@ from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
 from itertools import repeat
 from pathlib import Path
-from .hint import Stone, Board, Coord, Action
-from .state import onset, proxy, transition, judge
+from .hint import Stone, Board, Coord, Points, Action
+from .state import onset, proxy, unravel, Affordance, remove, transition, judge
 from .agent import Agent
 
 
@@ -115,6 +115,7 @@ class Game:
         self.round  = 0
         self.winner = 9
         self.rollout = Rollout()
+        self.aff = Affordance()
 
     def __len__(self):
         return len(self.rollout)
@@ -127,11 +128,17 @@ class Game:
     def board(self) -> Board:
         return self.rollout.last
 
+    @property
+    def affordance(self) -> Points:
+        return self.aff.points[:self.aff.n]
+
     def evo(self, action: Action):
         if self.winner in (-1, 0, +1):
             raise ValueError('game over')
-        stone, coord = action
-        board = transition(self.board, stone, coord)
+        stone, point = action
+        self.aff = remove(self.aff, point)
+        coord = unravel(point)
+        board = transition(self.board, stone, point)
         winner = judge(board)
         reward = self.agent.eye(winner)
         self.rollout.append(coord, reward, board)
@@ -169,7 +176,7 @@ def play(agents: tuple[Agent, Agent]) -> tuple[Stone, Rollout] :
     game = Game(agents)
     while True:
         agent  = game.agent
-        action = agent.act(game.board)
+        action = agent.act(game.board, game.affordance)
         winner = game.evo(action)
         if winner in (-1, 0, +1):
             break

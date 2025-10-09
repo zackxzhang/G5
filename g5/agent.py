@@ -4,8 +4,8 @@ from jax import Array                                             # type: ignore
 from abc import ABC, abstractmethod
 from enum import Flag
 from typing import Self
-from .hint import Stone, Board, Coord, Coords, Action, PyTree
-from .state import unravel, affordance, transitions
+from .hint import Stone, Board, Point, Points, Action, PyTree
+from .state import unravel, Affordance, transitions
 from .value import Value
 from .policy import Policy, critic
 from .reward import Reward
@@ -49,7 +49,7 @@ class Agent(ABC):
         return jax.random.choice(self.key, items)
 
     @abstractmethod
-    def act(self, board: Board) -> Action:
+    def act(self, board: Board, affordance: Affordance) -> Action:
         pass
 
     @abstractmethod
@@ -102,10 +102,9 @@ class Amateur(Agent):
             reward=type(self.reward),
         )
 
-    def act(self, board: Board) -> Action:
-        coords = affordance(board)
-        coord = self.choice(coords)
-        return self.stone, coord
+    def act(self, board: Board, affordance: Affordance) -> Action:
+        point = self.choice(affordance)
+        return self.stone, point
 
     def encode(self) -> PyTree:
         return {
@@ -198,20 +197,19 @@ class ValueLearner(Learner):
         key = decode_key(data['key'])
         return cls(stone, reward, value, epsilon, key)
 
-    def top(self, board: Board, coords: Coords) -> Coord:
-        boards = transitions(board, self.stone, coords)
+    def top(self, board: Board, points: Points) -> Point:
+        boards = transitions(board, self.stone, points)
         values = self.value(boards)
-        return coords[jnp.argmax(values)]
+        return points[jnp.argmax(values)]
 
-    def act(self, board: Board) -> Action:
-        coords = affordance(board)
+    def act(self, board: Board, affordance: Affordance) -> Action:
         if self.uniform() < self.epsilon():
             self.mode = Mode.EXPLORE
-            coord = self.choice(coords)
+            point = self.choice(affordance)
         else:
             self.mode = Mode.EXPLOIT
-            coord = self.top(board, coords)
-        return self.stone, coord
+            point = self.top(board, affordance)
+        return self.stone, point
 
     def obs(
         self,
@@ -276,16 +274,16 @@ class PolicyLearner(Learner):
         key = decode_key(data['key'])
         return cls(stone, reward, value, policy, epsilon, key)
 
-    def act(self, board: Board) -> Action:
+    def act(self, board: Board, affordance: Affordance) -> Action:
         if self.uniform() < self.epsilon():
             self.mode = Mode.EXPLORE
-            coord = self.choice(affordance(board))
+            point = self.choice(affordance)
         else:
             self.mode = Mode.EXPLOIT
             logpbs = self.policy.predicts(board)
             logpbs = jnp.where(board == 0, logpbs, jnp.nan)
-            coord = unravel(int(jnp.nanargmax(logpbs)))
-        return self.stone, coord
+            point = int(jnp.nanargmax(logpbs))
+        return self.stone, point
 
     def obs(
         self,
